@@ -1,0 +1,18 @@
+# Security
+API_KEY = ''
+API_SECRET = ''
+WEBHOOK_PASSPHRASE = ''
+
+# Strategy Settings
+REWARD = 3
+BREAKEVEN = 0.85
+RISK_EXPOSURE = 0.05
+TAKEPROFIT_POSITION = 0.5
+
+# Social Hooks
+DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1114435873551962112/PXgU2qYiBuS28H9ABHcr0lA9TXgbDLUJKiGLdrRmmy34MqGIx__KyndgxYCr39MtpL8l'
+DISCORD_WEBBHOOK_ENABLED = True
+
+# Network Settings
+LOCAL_HOST = '0.0.0.0'
+PORT = '5000'
