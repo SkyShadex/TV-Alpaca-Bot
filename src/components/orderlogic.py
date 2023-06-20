@@ -1,8 +1,8 @@
 from flask import Flask, render_template, request, abort
 #import alpaca_trade_api as tradeapi
-from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, ClosePositionRequest
+from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, ClosePositionRequest, GetOrdersRequest
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.enums import OrderSide, TimeInForce, AssetClass
 from alpaca.common import exceptions
 import app
 import config, json, requests, math
@@ -49,9 +49,10 @@ def checkAssetClass(ticker):
         print(f'{ticker} is not tradable')
 
 def calcQuantity(price):
-    cashAvailable = int(round(float(accountInfo.non_marginable_buying_power)))
-    quantity = (cashAvailable * config.RISK_EXPOSURE) / price #Position Size Based on Risk Exposure
+    cashAvailable = float(accountInfo.non_marginable_buying_power)
+    quantity = (cashAvailable * config.RISK_EXPOSURE) / price  # Position Size Based on Risk Exposure
     return quantity
+
 
 
 # ============================== Execution Logic =================================
@@ -63,7 +64,7 @@ def executeOrder(webhook_message):
 
     order_lock.acquire()
     try:
-        checkOpenOrder(symbol_WH)
+        checkOpenOrder(symbol_WH,side_WH)
 
         if side_WH == 'buy':
             result = executeBuyOrder(symbol_WH, price_WH)
