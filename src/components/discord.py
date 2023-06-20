@@ -1,6 +1,6 @@
 import config, requests
 
-def discordMessage(response):
+def message(response):
     if config.DISCORD_WEBHOOK_URL and config.DISCORD_WEBBHOOK_ENABLED==True:
                     chat_message = {
                         "username": "StrategyAlert",
