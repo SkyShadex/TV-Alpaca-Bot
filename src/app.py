@@ -2,8 +2,9 @@ from flask import Flask, render_template, request, abort, jsonify, render_templa
 #import alpaca_trade_api as tradeapi
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetOrdersRequest
-import config, json, requests, subprocess
-from components import orderlogic
+from alpaca.common import exceptions
+import config, json, requests, subprocess, logging
+from components import orderlogic, vars, discord
 from commons import start
 
 
@@ -52,41 +53,34 @@ def webhook():
         }
     else:
         # Declare some variable
-        symbol = webhook_message['ticker']
-        side = webhook_message['strategy']['order_action']
-        price = webhook_message['strategy']['order_price']
-        quantity = webhook_message['strategy']['order_contracts']
-        comment = webhook_message['strategy']['comment']
-        orderID = webhook_message['strategy']['order_id']
+        symbol_WH, side_WH, price_WH, qty_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
+
+        # Trigger Received Confirmation
+        content = f"Strategy Alert Triggered: {side_WH}({comment_WH}) {qty_WH} shares of {symbol_WH} @ {price_WH}."
+        print(content)
+        discord.message(content)
 
         try:
-            orderlogic.executeOrder(webhook_message) # Execute Order with the Webhook
+            response = orderlogic.executeOrder(webhook_message)  # Execute Order with the Webhook
 
-            # if a DISCORD URL is set in the config file, we will post to the discord webhook
-            if config.DISCORD_WEBHOOK_URL and config.DISCORD_WEBBHOOK_ENABLED==True:
- 
-                chat_message = {
-                    "username": "StrategyAlert",
-                    "avatar_url": "https://i.imgur.com/4M34hi2.png",
-                    "content": f"TradingView strategy alert triggered: {side} {quantity} shares of {symbol} @ {price}"
-                }
-                requests.post(config.DISCORD_WEBHOOK_URL, json=chat_message)
-            
-            # return webhook_message
-            return jsonify(message='Order executed successfully'), 200, webhook_message
+            if isinstance(response, Order):
+                orderInfo = vars.extract_order_response(response)
+                content = f"Alpaca Response: Order executed successfully. {orderInfo['qty']} of {orderInfo['symbol']} submitted at {orderInfo['submitted_at']}"
+                discord.message(content)
 
-        except Exception as e:
+                # Return alpaca response
+                print(response)
+                return jsonify(message='Order executed successfully!', orderInfo=orderInfo)
+            else:
+                content = f"Alpaca Error: {response} for {side_WH} order"
+                discord.message(content)
+                return jsonify(error=str(response)), 500
+
+        except exceptions.APIError as e:
             # Handle the exception and return an error response
-            error_message = "{}".format(e)
-
-            # if a DISCORD URL is set in the config file, we will post to the discord webhook
-            if config.DISCORD_WEBHOOK_URL and config.DISCORD_WEBBHOOK_ENABLED==True:
-                chat_message = {
-                    "username": "StrategyAlert",
-                    "avatar_url": "https://i.imgur.com/4M34hi2.png",
-                    "content": f"TradingView strategy: {error_message}"
-                }
-                requests.post(config.DISCORD_WEBHOOK_URL, json=chat_message)
+            error_message = traceback.format_exc()
+            content = f"Big Error: {error_message}"
+            discord.message(content)
             return jsonify(error=error_message), 500
 
 

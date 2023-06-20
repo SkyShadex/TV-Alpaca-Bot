@@ -6,16 +6,17 @@ from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.common import exceptions
 import app
 import config, json, requests, math
+from components import vars
+from threading import Lock
 
 # Declaring some variables
 api = TradingClient(config.API_KEY, config.API_SECRET, paper=True)
 accountInfo = api.get_account()
 slippage = config.RISK_EXPOSURE + 1
+order_lock = Lock()
 
-
-
+# Check if our account is restricted from trading.
 def tradingValid():
-    # Check if our account is restricted from trading.
     if accountInfo.trading_blocked:
         print('Error: Account is currently restricted from trading.')
         return 'Error: Account is currently restricted from trading.'
@@ -24,57 +25,86 @@ def tradingValid():
         return 'Error: Approaching Day Trade Limit'
     else:
         return True
+    
+def checkOpenOrder(ticker, side):
+    opposite_side = 'sell' if side == 'buy' else 'buy'
+
+    orderParams = GetOrdersRequest(status='open', limit=5, nested=True, symbols=[ticker])
+    orders = api.get_orders(filter=orderParams)
+
+    for order in orders:
+        if order.side == opposite_side:
+            api.cancel_order_by_id(order_id=order.id)
+            response = f"Replaced open {opposite_side} order for symbol {ticker}"
+            print(response)
+
+    return
+
+def checkAssetClass(ticker):
+    assest = api.get_asset(ticker)
+    if assest.tradable:
+        print(f'{ticker} is a {assest.asset_class} asset.')
+        return assest.asset_class
+    else:
+        print(f'{ticker} is not tradable')
+
+def calcQuantity(price):
+    cashAvailable = int(round(float(accountInfo.non_marginable_buying_power)))
+    quantity = (cashAvailable * config.RISK_EXPOSURE) / price #Position Size Based on Risk Exposure
+    return quantity
+
 
 # ============================== Execution Logic =================================
 def executeOrder(webhook_message):
+    symbol_WH, side_WH, price_WH, qty_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
 
-    # Declaring Some Variables from the WebHook
-    symbol_WH = webhook_message['ticker']
-    side_WH = webhook_message['strategy']['order_action']
-    price_WH = webhook_message['strategy']['order_price']
-    qty_WH = webhook_message['strategy']['order_contracts']
-    comment_WH = webhook_message['strategy']['comment']
-    orderID_WH = webhook_message['strategy']['order_id']
-    print(symbol_WH, side_WH, price_WH, qty_WH, side_WH, 'limit', 'gtc', comment_WH, orderID_WH)
+    if not tradingValid():
+        return "Trade not valid"
 
-    # Check if our account is restricted from trading.
+    order_lock.acquire()
+    try:
+        checkOpenOrder(symbol_WH)
+
+        if side_WH == 'buy':
+            result = executeBuyOrder(symbol_WH, price_WH)
+        elif side_WH == 'sell':
+            result = executeSellOrder(symbol_WH, orderID_WH)
+        else:
+            result = "Invalid order side"
+    finally:
+        order_lock.release()
+
+    return result
     
-
-    # Order Execution    
-    if tradingValid():
-        # Buy Side
-        if side_WH=='buy':
-            cashAvailable = int(round(float(accountInfo.non_marginable_buying_power)))
-            quantity = (cashAvailable * config.RISK_EXPOSURE) / price_WH #Position Size Based on Risk Exposure
-            if quantity >= 1:
-                orderData = LimitOrderRequest(symbol=symbol_WH, qty=round(quantity), side=side_WH, type='limit', time_in_force='gtc', limit_price=price_WH, client_order_id='SkyTraderBot#1')
-                order = api.submit_order(orderData)
-            elif config.FRACTIONAL_ALLOW == True:
-                orderData = MarketOrderRequest(symbol=symbol_WH, qty=quantity, side=side_WH, type='market', time_in_force='gtc', client_order_id='SkyTraderBot#1')
-                order = api.submit_order(orderData)
-            else:
-                response = "Invalid Buy Side Order"
-                print(response)
-                return response
-
-        # Sell Side    
-        elif (side_WH == 'sell'):
-            
-            try:
-                # Check if Position Exists before Sell
-                position = api.get_open_position(symbol_WH)
-                if orderID_WH == 'TP':
-                    close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION)
-                    order = api.close_position(symbol_WH,close_options=close_options)
-                elif orderID_WH == 'Exit' or comment_WH == 'CL':
-                    order = api.close_position(symbol_WH)
-                else:
-                    response = "Error: No Existing Position"
-                    print(response)
-                    return response
-                #raise Exception("Something went wrong")
-            except exceptions.APIError as e:
-                raise e
+def executeBuyOrder(symbol, price):
+    quantity = calcQuantity(price)
+    if checkAssetClass(symbol) == AssetClass.CRYPTO:
+        orderData = MarketOrderRequest(
+            symbol=symbol,
+            qty=quantity,
+            side='buy',
+            time_in_force='gtc'
+        )
+        response = f"Market Order, buy: {symbol}. {quantity} shares, 'gtc'."
     else:
-        return tradingValid()
+        orderData = LimitOrderRequest(
+            symbol=symbol,
+            qty=round(quantity),
+            side='buy',
+            type='limit',
+            time_in_force='gtc',
+            limit_price=price
+        )
+        response = f"Limit Order, buy: {symbol} @ {price}. {round(quantity)} shares, 'gtc'."
+    
+    print(response)
+    return api.submit_order(orderData)
+
+def executeSellOrder(symbol, orderID):
+    if orderID == 'TP':
+        close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION)
+        return api.close_position(symbol, close_options=close_options)
+    else:
+        return api.close_position(symbol)
+
 
