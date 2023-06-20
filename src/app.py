@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, abort, jsonify, render_templa
 #import alpaca_trade_api as tradeapi
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetOrdersRequest
+from alpaca.trading.models import Order
 from alpaca.common import exceptions
 import config, json, requests, subprocess, logging
 from components import orderlogic, vars, discord
@@ -45,6 +46,9 @@ def account():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     webhook_message = json.loads(request.data)
+    # Log the webhook_message
+    logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
+    logging.info('Webhook message received: %s', webhook_message)
 
     if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
         return {
@@ -71,16 +75,10 @@ def webhook():
                 # Return alpaca response
                 print(response)
                 return jsonify(message='Order executed successfully!', orderInfo=orderInfo)
-            else:
-                content = f"Alpaca Error: {response} for {side_WH} order"
-                discord.message(content)
-                return jsonify(error=str(response)), 500
-
+            
         except exceptions.APIError as e:
-            # Handle the exception and return an error response
-            error_message = traceback.format_exc()
-            content = f"Big Error: {error_message}"
-            discord.message(content)
+            error_message = f"Alpaca Error: {str(e)} for {side_WH} order"
+            discord.message(error_message)
             return jsonify(error=error_message), 500
 
 
