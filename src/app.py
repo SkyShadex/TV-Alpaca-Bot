@@ -6,6 +6,7 @@ from alpaca.trading.models import Order
 from alpaca.common import exceptions
 import config, json, requests, subprocess, logging
 from components import orderlogic, vars, discord
+from components.techanalysis import screener
 from commons import start
 
 
@@ -42,6 +43,13 @@ def account():
     pretty_json = json.dumps(payload, indent=4)
     html = f"<pre>{pretty_json}</pre>"
     return render_template_string(html)
+
+@app.route('/screen', methods=['GET'])
+def screen():
+    response = screener.test()
+    return jsonify(response)
+    #return render_template_string(str(response))
+
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
