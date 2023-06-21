@@ -73,7 +73,7 @@ def webhook():
                 discord.message(content)
 
                 # Return alpaca response
-                print(response)
+                print(content)
                 return jsonify(message='Order executed successfully!', orderInfo=orderInfo)
             
         except exceptions.APIError as e:

@@ -11,6 +11,7 @@ src_folder = os.path.join(parent_dir, 'TV-Alpaca-Bot', 'src')
 
 # Change the current working directory to the src folder
 os.chdir(src_folder)
+
 os.system('pip install -r requirements.txt')
 os.system('export FLASK_ENV=development')
 
