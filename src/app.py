@@ -8,7 +8,7 @@ import config, json, requests, subprocess, logging
 from components import orderlogic, vars, discord
 from components.techanalysis import screener
 from commons import start
-
+from threading import Lock
 
 app = Flask(__name__)
 
@@ -16,7 +16,7 @@ app = Flask(__name__)
 api = TradingClient(config.API_KEY, config.API_SECRET, paper=True)
 accountInfo = api.get_account()
 orderParams = GetOrdersRequest(status='all',limit=100,nested=True)
-orders = api.get_orders(filter=orderParams)
+order_lock = Lock()
 
 # Start Up Message.
 start.startMessage(accountInfo.buying_power,accountInfo.daytrade_count)
@@ -34,8 +34,8 @@ def fetch_account_info():
 @app.route('/')
 def dashboard():
     orders = fetch_orders()
-    accountinfo = fetch_account_info()
-    return render_template('dashboard.html', alpaca_orders=orders, account_info=accountInfo)
+    account_info = fetch_account_info()
+    return render_template('dashboard.html', alpaca_orders=orders, account_info=account_info)
 
 @app.route('/account', methods=['GET'])
 def account():
@@ -71,7 +71,7 @@ def webhook():
         content = f"Strategy Alert Triggered: {side_WH}({comment_WH}) {qty_WH} shares of {symbol_WH} @ {price_WH}."
         print(content)
         discord.message(content)
-
+        order_lock.acquire()
         try:
             response = orderlogic.executeOrder(webhook_message)  # Execute Order with the Webhook
 
@@ -82,12 +82,14 @@ def webhook():
 
                 # Return alpaca response
                 print(content)
-                return jsonify(message='Order executed successfully!', orderInfo=orderInfo)
-            
+                return jsonify(message='Order executed successfully!', orderInfo=orderInfo)            
         except exceptions.APIError as e:
             error_message = f"Alpaca Error: {str(e)} for {side_WH} order"
             discord.message(error_message)
             return jsonify(error=error_message), 500
+        finally:
+            order_lock.release()
+
 
 
 #if __name__ == '__app__':
