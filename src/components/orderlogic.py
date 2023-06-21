@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, abort
-#import alpaca_trade_api as tradeapi
 from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, ClosePositionRequest, GetOrdersRequest
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce, AssetClass
