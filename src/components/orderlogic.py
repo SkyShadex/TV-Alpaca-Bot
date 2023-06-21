@@ -6,13 +6,13 @@ from alpaca.common import exceptions
 import app
 import config, json, requests, math, random
 from components import vars
-from threading import Lock
+
 
 # Declaring some variables
 api = TradingClient(config.API_KEY, config.API_SECRET, paper=True)
 accountInfo = api.get_account()
 slippage = config.RISK_EXPOSURE + 1
-order_lock = Lock()
+
 
 
 # Check if our account is restricted from trading.
@@ -64,20 +64,14 @@ def executeOrder(webhook_message):
     
     if not tradingValid():
         return "Trade not valid"
-
-    order_lock.acquire()
-    try:
-        checkOpenOrder(symbol_WH,side_WH)
-        
-        if side_WH == 'buy':
-            result = executeBuyOrder(symbol_WH, price_WH)
-        elif side_WH == 'sell':
-            result = executeSellOrder(symbol_WH, orderID_WH)
-        else:
-            result = "Invalid order side"
-    finally:
-        order_lock.release()
-
+    
+    checkOpenOrder(symbol_WH,side_WH)    
+    if side_WH == 'buy':
+        result = executeBuyOrder(symbol_WH, price_WH)
+    elif side_WH == 'sell':
+        result = executeSellOrder(symbol_WH, orderID_WH)
+    else:
+        result = "Invalid order side"
     return result
     
 def executeBuyOrder(symbol, price):
@@ -93,8 +87,8 @@ def executeBuyOrder(symbol, price):
         )
         response = f"Market Order, buy: {symbol}. {quantity} shares, 'gtc'."
     else:
-        take_profit = {"limit_price": price * config.REWARD}
-        stop_loss = {"stop_price": price * config.BREAKEVEN}
+        take_profit = {"limit_price": round(price * config.REWARD,2)}
+        stop_loss = {"stop_price": round(price * config.BREAKEVEN,2)}
         orderData = LimitOrderRequest(
             symbol=symbol,
             qty=round(quantity),
@@ -113,7 +107,7 @@ def executeBuyOrder(symbol, price):
     return api.submit_order(orderData)
 
 def executeSellOrder(symbol, orderID):
-    if orderID == 'TP':
+    if orderID == 'Tp':
         close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION)
         return api.close_position(symbol, close_options=close_options)
     else:
