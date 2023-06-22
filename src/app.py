@@ -54,41 +54,33 @@ def screen():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     webhook_message = json.loads(request.data)
-    # Log the webhook_message
     logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
     logging.info('Webhook message received: %s', webhook_message)
 
     if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
-        return {
-            'code': 'error',
-            'message': 'nice try buddy'
-        }
-    else:
-        # Declare some variable
-        symbol_WH, side_WH, price_WH, qty_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
-
-        # Trigger Received Confirmation
-        content = f"Strategy Alert Triggered: {side_WH}({comment_WH}) {qty_WH} shares of {symbol_WH} @ {price_WH}."
-        print(content)
-        discord.message(content)
-        order_lock.acquire()
+        return {'code': 'error', 'message': 'nice try buddy'}
+    
+    symbol_WH, side_WH, price_WH, qty_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
+    content = f"Strategy Alert Triggered: {side_WH}({comment_WH}) {qty_WH} shares of {symbol_WH} @ {price_WH}."
+    print(content)
+    discord.message(content)
+    
+    with order_lock:
         try:
-            response = orderlogic.executeOrder(webhook_message)  # Execute Order with the Webhook
+            response = orderlogic.executeOrder(webhook_message)
 
             if isinstance(response, Order):
                 orderInfo = vars.extract_order_response(response)
                 content = f"Alpaca Response: Order executed successfully. {orderInfo['qty']} of {orderInfo['symbol']} submitted at {orderInfo['submitted_at']}"
                 discord.message(content)
-
-                # Return alpaca response
                 print(content)
-                return jsonify(message='Order executed successfully!', orderInfo=orderInfo)            
+                return jsonify(message='Order executed successfully!', orderInfo=orderInfo)
+            
         except exceptions.APIError as e:
             error_message = f"Alpaca Error: {str(e)} for {side_WH} order"
             discord.message(error_message)
             return jsonify(error=error_message), 500
-        finally:
-            order_lock.release()
+
 
 
 
