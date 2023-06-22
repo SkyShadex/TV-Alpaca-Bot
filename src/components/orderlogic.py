@@ -29,17 +29,21 @@ def tradingValid():
         return True
     
 def checkOpenOrder(ticker, side):
-    opposite_side = 'sell' if side == 'buy' else 'buy'
     orderParams = GetOrdersRequest(status='all', limit=20, nested=False, symbols=[ticker])
     orders = api.get_orders(filter=orderParams)
-    counter = 0
+    canceled_orders = []
     for order in orders:
-        print(order.side, order.status)
-        if order.side == opposite_side:
+        if order.side == side and order.side == 'buy':
+            # Skip canceling the old buy order
+            continue
+        else:
             api.cancel_order_by_id(order_id=order.id)
-            counter += 1
-    response = f"Replaced {counter} open {opposite_side} order(s) for symbol {ticker}"
+            canceled_orders.append(order.id)
+    counter = len(canceled_orders)
+    response = f"Checked {counter} open order(s) for symbol {ticker}"
     print(response)
+    return canceled_orders
+
     
 
 def checkAssetClass(ticker):
