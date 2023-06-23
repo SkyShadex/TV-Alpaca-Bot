@@ -60,7 +60,7 @@ def graph(plot_filename):
     
     # Plot the equity
     plt.figure(figsize=(10, 6))
-    plt.plot(timestamps, profit_loss_pct, label='Equity')
+    plt.plot(timestamps, equity, label='Equity')
     plt.xlabel('Timestamp')
     plt.ylabel('Equity')
     plt.title('Portfolio Equity')

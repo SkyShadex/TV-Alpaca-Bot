@@ -4,15 +4,15 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce, AssetClass
 from alpaca.common import exceptions
 import app
-import config, json, requests, math, random
+import config, json, requests, math, random, time
 from components import vars
 from components.api_alpaca import api
+
 
 
 # Declaring some variables
 accountInfo = api.get_account()
 slippage = config.RISK_EXPOSURE + 1
-
 
 
 # Check if our account is restricted from trading.
@@ -70,7 +70,9 @@ def executeOrder(webhook_message):
     if side_WH == 'buy':
         result = executeBuyOrder(symbol_WH, price_WH)
     elif side_WH == 'sell':
-        result = executeSellOrder(symbol_WH, orderID_WH)
+            result = executeSellOrder(symbol_WH, orderID_WH)
+            #if orderID_WH != 'Tp':
+            #    time.sleep(3)
     else:
         result = "Invalid order side"
     return result
@@ -110,7 +112,7 @@ def executeBuyOrder(symbol, price):
 
 def executeSellOrder(symbol, orderID):
     if orderID == 'Tp':
-        close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION)
+        close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION*100)
         return api.close_position(symbol, close_options=close_options)
     else:
         return api.close_position(symbol)
