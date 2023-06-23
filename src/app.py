@@ -16,7 +16,6 @@ app = Flask(__name__)
 
 # Declaring some variables
 accountInfo = api.get_account()
-orderParams = GetOrdersRequest(status='all',limit=100,nested=True)
 order_lock = Lock()
 
 # Start Up Message.
@@ -24,6 +23,7 @@ start.startMessage(accountInfo.buying_power,accountInfo.daytrade_count)
 
 # Making the dashboard dynamic
 def fetch_orders():
+    orderParams = GetOrdersRequest(status='all',limit=100,nested=True)
     orders = api.get_orders(filter=orderParams)
     return orders
 
