@@ -89,8 +89,8 @@ def executeBuyOrder(symbol, price):
         )
         response = f"Market Order, buy: {symbol}. {quantity} shares, 'gtc'."
     else:
-        take_profit = {"limit_price": price * config.REWARD}
-        stop_loss = {"stop_price": price * config.BREAKEVEN}
+        take_profit = {"limit_price": round(price * config.REWARD,2)}
+        stop_loss = {"stop_price": round(price * config.BREAKEVEN,2)}
         orderData = LimitOrderRequest(
             symbol=symbol,
             qty=round(quantity),
