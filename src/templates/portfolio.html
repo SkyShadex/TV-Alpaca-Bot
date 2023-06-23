@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    </head>
+    <body>
+        <div class="container">
+            <img src="static/alpaca_icon@1x.png" alt="Alpaca Icon" />
+            <h2>Alpaca Dashboard</h2>
+            <p>This is local</p>
+            
+            <div class="tab">
+                <button class="tab-button active" onclick="openTab('portfolio')">Portfolio</button>
+            </div>
+
+            <div id="portfolio" class="tab-content active">
+                <h2>Portfolio</h2>
+                <img id="graph" src="{{ url_for('static', filename=plot_filename) }}" alt="Equity Plot" >
+            </div>
+
+            
+        </div>
+        <script>
+            function openTab(tabName, event) {
+                var i, tabContent, tabButton;
+        
+                tabContent = document.getElementsByClassName("tab-content");
+                for (i = 0; i < tabContent.length; i++) {
+                    tabContent[i].style.display = "none";
+                }
+        
+                tabButton = document.getElementsByClassName("tab-button");
+                for (i = 0; i < tabButton.length; i++) {
+                    tabButton[i].className = tabButton[i].className.replace(" active", "");
+                }
+        
+                document.getElementById(tabName).style.display = "block";
+                event.currentTarget.className += " active";
+            }
+        </script>
+    </body>
+</html>

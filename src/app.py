@@ -4,16 +4,17 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetOrdersRequest
 from alpaca.trading.models import Order
 from alpaca.common import exceptions
-import config, json, requests, subprocess, logging
-from components import orderlogic, vars, discord
+import config, json, requests, os, logging
+from components import orderlogic, vars, discord, portfolio
 from components.techanalysis import screener
+from components.api_alpaca import api
 from commons import start
 from threading import Lock
+
 
 app = Flask(__name__)
 
 # Declaring some variables
-api = TradingClient(config.API_KEY, config.API_SECRET, paper=True)
 accountInfo = api.get_account()
 orderParams = GetOrdersRequest(status='all',limit=100,nested=True)
 order_lock = Lock()
@@ -48,7 +49,12 @@ def account():
 def screen():
     response = screener.test()
     return jsonify(response)
-    #return render_template_string(str(response))
+
+@app.route('/portfolio', methods=['GET'])
+def portDisplay():
+    plot_filename = 'portfolioperformance.png'
+    portfolio.graph(plot_filename)
+    return render_template('portfolio.html', plot_filename=plot_filename)
 
 
 @app.route('/webhook', methods=['POST'])

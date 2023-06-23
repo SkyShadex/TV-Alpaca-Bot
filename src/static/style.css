@@ -21,6 +21,12 @@ img {
     max-width: 150px;
 }
 
+img#graph {
+    display: block;
+    margin: 0 auto;
+    max-width: 90%;
+}
+
 h2 {
     text-align: center;
     color: #fff;

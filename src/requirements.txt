@@ -4,3 +4,4 @@ alpaca-py == 0.8.2
 requests
 ngrok
 python-dotenv
+matplotlib

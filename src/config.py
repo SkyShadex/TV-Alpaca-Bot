@@ -1,4 +1,4 @@
-import os
+import os, app
 from dotenv import find_dotenv, load_dotenv
 
 # Dev Env Variables
