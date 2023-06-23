@@ -6,10 +6,10 @@ from alpaca.common import exceptions
 import app
 import config, json, requests, math, random
 from components import vars
+from components.api_alpaca import api
 
 
 # Declaring some variables
-api = TradingClient(config.API_KEY, config.API_SECRET, paper=True)
 accountInfo = api.get_account()
 slippage = config.RISK_EXPOSURE + 1
 
