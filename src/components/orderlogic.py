@@ -40,7 +40,6 @@ def checkOpenOrder(ticker, side):
     response = f"Checked {counter} open order(s) for symbol {ticker}"
     print(response)
     return canceled_orders
-
     
 
 def checkAssetClass(ticker):
