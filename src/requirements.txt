@@ -5,3 +5,5 @@ requests
 ngrok
 python-dotenv
 matplotlib
+tradingview-screener
+#git+https://github.com/AI4Finance-Foundation/FinRL.git

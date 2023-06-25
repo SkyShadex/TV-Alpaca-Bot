@@ -11,6 +11,15 @@ def webhook(webhook_message):
 
         return symbol_WH,side_WH,price_WH,quantity_WH,comment_WH,orderID_WH
 
+def portfolioData(portfolio_history):
+    timestamps = portfolio_history['timestamp']
+    equity = portfolio_history['equity']
+    profit_loss = portfolio_history['profit_loss']
+    profit_loss_pct = portfolio_history['profit_loss_pct']
+
+    return timestamps, equity, profit_loss, profit_loss_pct
+
+
 def extract_order_response(response):
     if isinstance(response, Order):
         response_dict = {

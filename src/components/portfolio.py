@@ -1,45 +1,64 @@
-import requests, config, os, datetime
+import requests, config, os
 import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
 
-# Set the base URL for the Alpaca Trading API
+# Set Alpaca Trading API
 base_url = 'https://paper-api.alpaca.markets'
-
-# Set the endpoint for getting portfolio history
 endpoint = '/v2/account/portfolio/history'
-
-# Set the parameters for the request
-params = {
-    'period': '30D',  # Specify the desired time period (e.g., '1D', '1W', '1M')
-    'timeframe': '1H'  # Specify the time interval of each data element (e.g., '1D', '1H', '15Min')
-}
-
-# Set the headers for the request
 headers = {
     'APCA-API-KEY-ID': config.API_KEY,
     'APCA-API-SECRET-KEY': config.API_SECRET
 }
 
+# Date range for the portfolio request
+end_date = datetime.today()
+start_date = datetime(2023, 5, 17)
 
+
+def get_params(start_date, end_date):
+    # Calculate the duration of the date range in days
+    duration = (end_date - start_date).days
+    print(duration)
+
+    if duration <= 30:
+        periodPD = '{}D'.format(duration)
+    elif duration <= 90:
+        periodPD = '{}W'.format(round(duration/7))
+    else:
+        periodPD = '{}M'.format(round(duration/30))
+
+    if periodPD.endswith('D'):
+        unitPD = '15Min'
+    else:
+        unitPD = '1D'
+
+    # Set the parameters for the request
+    params = {
+        'period': periodPD,
+        'timeframe': unitPD
+    }
+    print(params)
+    return params
 
 def request_portfolio_history():
-    # Send the GET request to the Alpaca Trading API
+    params=get_params(start_date, end_date)
     response = requests.get(
         base_url + endpoint,
-        params=params,
+        params,
         headers=headers
     )
 
-    # Check if the request was successful
     if response.status_code == 200:
-        # Parse the response JSON
         portfolio_history = response.json()
-
         # Reformat the timestamps
         timestamps = portfolio_history['timestamp']
         formatted_timestamps = []
 
         for timestamp in timestamps:
-            formatted_timestamp = datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+            if params['period'].endswith('D'):
+                formatted_timestamp = datetime.fromtimestamp(timestamp).strftime('%m-%d-%Y %H:%M:%S')
+            else:
+                formatted_timestamp = datetime.fromtimestamp(timestamp).strftime('%m-%d-%Y')
             formatted_timestamps.append(formatted_timestamp)
 
         portfolio_history['timestamp'] = formatted_timestamps
@@ -66,10 +85,13 @@ def graph(plot_filename):
     plt.title('Portfolio Equity')
     plt.legend()
 
+
     # Alternatively, skip every other label
-    plt.xticks(range(len(timestamps)), timestamps, rotation=45, fontsize=8)
+    num_ticks = len(timestamps)
+    display_ticks = 20
+    plt.xticks(range(len(timestamps)), timestamps, rotation=60, fontsize=6)
     for i, label in enumerate(plt.gca().xaxis.get_ticklabels()):
-        if i % 10 == 1:
+        if i % (num_ticks // display_ticks) == 0:
             label.set_visible(True)
         else:
             label.set_visible(False)
