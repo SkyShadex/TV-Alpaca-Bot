@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, abort
 from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, ClosePositionRequest, GetOrdersRequest
 from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import OrderSide, TimeInForce, AssetClass
+from alpaca.trading.enums import OrderSide, TimeInForce, AssetClass, OrderStatus
 from alpaca.common import exceptions
 import app
 import config, json, requests, math, random, time
@@ -29,17 +29,30 @@ def checkOpenOrder(ticker, side):
     orderParams = GetOrdersRequest(status='all', limit=20, nested=False, symbols=[ticker])
     orders = api.get_orders(filter=orderParams)
     canceled_orders = []
-    for order in orders:
-        if order.side == side and order.side == 'buy':
-            # Skip canceling the old buy order
-            continue
-        else:
-            api.cancel_order_by_id(order_id=order.id)
-            canceled_orders.append(order.id)
-    counter = len(canceled_orders)
-    response = f"Checked {counter} open order(s) for symbol {ticker}"
-    print(response)
+    
+    if orders:  # Check if there are any orders
+        for order in orders:
+            if order.side == side and order.side == 'buy':
+                # Skip canceling the old buy order
+                continue
+            elif order.status in [OrderStatus.CANCELED, OrderStatus.FILLED]:
+                continue
+            else:
+                try:
+                    api.cancel_order_by_id(order_id=order.id)
+                    canceled_orders.append(order.id)
+                except Exception as e:
+                    print(f"Error canceling order {order.id}: {e}")
+        
+        counter = len(canceled_orders)
+        response = f"Checked {counter} open order(s) for symbol {ticker}"
+        print(response)
+    else:
+        response = f"No open orders found for symbol {ticker}"
+        print(response)
+    
     return canceled_orders
+
     
 
 def checkAssetClass(ticker):
@@ -65,7 +78,8 @@ def executeOrder(webhook_message):
     if not tradingValid():
         return "Trade not valid"
     
-    checkOpenOrder(symbol_WH, side_WH)    
+    checkOpenOrder(symbol_WH, side_WH)
+      
     if side_WH == 'buy':
         result = executeBuyOrder(symbol_WH, price_WH)
     elif side_WH == 'sell':
