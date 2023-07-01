@@ -16,8 +16,8 @@ DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 DISCORD_WEBBHOOK_ENABLED = True
 
 # Strategy Settings
-REWARD = 2
-BREAKEVEN = 0.65
+REWARD = 2 # Units made for every unit risked
+RISK = 1 # Unit risked
 RISK_EXPOSURE = 0.05
 TAKEPROFIT_POSITION = 0.5
 DAYTRADE_ALLOW= True

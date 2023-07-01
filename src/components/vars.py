@@ -8,6 +8,7 @@ def webhook(webhook_message):
         quantity_WH = webhook_message['strategy']['order_contracts']
         comment_WH = webhook_message['strategy']['comment']
         orderID_WH = webhook_message['strategy']['order_id']
+        
 
         return symbol_WH,side_WH,price_WH,quantity_WH,comment_WH,orderID_WH
 

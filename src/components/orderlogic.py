@@ -10,6 +10,7 @@ from components.api_alpaca import api
 
 
 
+
 # Declaring some variables
 accountInfo = api.get_account()
 slippage = config.RISK_EXPOSURE + 1
@@ -32,7 +33,7 @@ def checkOpenOrder(ticker, side):
     
     if orders:  # Check if there are any orders
         for order in orders:
-            if order.side == side and order.side == 'buy':
+            if side == 'buy': #order.side == side and side == 'buy':
                 # Skip canceling the old buy order
                 continue
             elif order.status in [OrderStatus.CANCELED, OrderStatus.FILLED]:
@@ -69,11 +70,13 @@ def calcQuantity(price):
     return quantity
 
 
-
-
+def calcRR(price):
+    stopLoss = round((((0.1*config.RISK) * price) - price)*-1, 2)
+    takeProfit = round((((0.1*config.RISK)*config.REWARD) * price) + price, 2)
+    return stopLoss, takeProfit
 # ============================== Execution Logic =================================
 def executeOrder(webhook_message):
-    symbol_WH, side_WH, price_WH, qty_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
+    symbol_WH,side_WH,price_WH,quantity_WH,comment_WH,orderID_WH = vars.webhook(webhook_message)
     
     if not tradingValid():
         return "Trade not valid"
@@ -104,8 +107,9 @@ def executeBuyOrder(symbol, price):
         )
         response = f"Market Order, buy: {symbol}. {quantity} shares, 'gtc'."
     else:
-        take_profit = {"limit_price": round(price * config.REWARD,2)}
-        stop_loss = {"stop_price": round(price * config.BREAKEVEN,2)}
+        stopLoss, takeProfit = calcRR(price)
+        take_profit = {"limit_price": takeProfit}
+        stop_loss = {"stop_price": stopLoss}
         orderData = LimitOrderRequest(
             symbol=symbol,
             qty=round(quantity),
@@ -125,7 +129,7 @@ def executeBuyOrder(symbol, price):
 
 def executeSellOrder(symbol, orderID):
     if orderID == 'Tp':
-        close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION*100)
+        close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION*100) 
         return api.close_position(symbol, close_options=close_options)
     else:
         return api.close_position(symbol)

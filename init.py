@@ -13,6 +13,8 @@ src_folder = os.path.join(parent_dir, 'TV-Alpaca-Bot', 'src')
 os.chdir(src_folder)
 
 os.system('pip install -r requirements.txt')
+os.system(' pip install MetaTrader5')
+os.system('pip install --upgrade MetaTrader5')
 os.system('export FLASK_ENV=development')
 
 # Now you can run the "flask run" command
