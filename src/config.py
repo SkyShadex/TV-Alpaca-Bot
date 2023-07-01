@@ -18,10 +18,11 @@ DISCORD_WEBBHOOK_ENABLED = True
 # Strategy Settings
 REWARD = 2 # Units made for every unit risked
 RISK = 1 # Unit risked
-RISK_EXPOSURE = 0.05
+RISK_EXPOSURE = 0.02
 TAKEPROFIT_POSITION = 0.5
-DAYTRADE_ALLOW= True
+DAYTRADE_ALLOW = True
 FRACTIONAL_ALLOW = True
+MARGIN_ALLOW = True
 
 # Network Settings
 LOCAL_HOST = '0.0.0.0'

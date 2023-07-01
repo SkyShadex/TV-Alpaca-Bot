@@ -65,7 +65,10 @@ def checkAssetClass(ticker):
 
 
 def calcQuantity(price):
-    cashAvailable = float(accountInfo.non_marginable_buying_power)
+    if config.MARGIN_ALLOW == True:
+        cashAvailable = float(accountInfo.daytrading_buying_power)
+    else:    
+        cashAvailable = float(accountInfo.non_marginable_buying_power)
     quantity = (cashAvailable * config.RISK_EXPOSURE) / price  # Position Size Based on Risk Exposure
     return quantity
 
