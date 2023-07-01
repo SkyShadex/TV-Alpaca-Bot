@@ -5,7 +5,7 @@ from alpaca.trading.requests import GetOrdersRequest
 from alpaca.trading.models import Order
 from alpaca.common import exceptions
 import config, json, requests, os, logging
-from components import orderlogic, vars, discord, portfolio
+from components import orderlogic, vars, discord, portfolio, backtest
 from components.techanalysis import screener
 from components.api_alpaca import api
 from commons import start
@@ -54,7 +54,10 @@ def screen():
 def portDisplay():
     plot_filename = 'portfolioperformance.png'
     portfolio.graph(plot_filename)
+    backtest.collectOrders()
     return render_template('portfolio.html', plot_filename=plot_filename)
+    
+
 
 
 @app.route('/webhook', methods=['POST'])
@@ -66,8 +69,8 @@ def webhook():
     if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
         return {'code': 'error', 'message': 'nice try buddy'}
     
-    symbol_WH, side_WH, price_WH, qty_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
-    content = f"Strategy Alert Triggered: {side_WH}({comment_WH}) {qty_WH} shares of {symbol_WH} @ {price_WH}."
+    symbol_WH,side_WH,price_WH,quantity_WH,comment_WH,orderID_WH = vars.webhook(webhook_message)
+    content = f"Strategy Alert Triggered: {side_WH}({comment_WH}) {quantity_WH} shares of {symbol_WH} @ {round(price_WH,3)}."
     print(content)
     discord.message(content)
     
@@ -85,8 +88,11 @@ def webhook():
         except exceptions.APIError as e:
             error_message = f"Alpaca Error: {str(e)} for {side_WH} order"
             discord.message(error_message)
-            return jsonify(error=error_message), 500
 
+            if "position not found" in str(e) or "order not found" in str(e):
+                return jsonify(error=error_message), 200  # Return 200 for good errors
+            else:
+                return jsonify(error=error_message), 500  # Return 500 for other errors
 
 
 
