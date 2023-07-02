@@ -66,10 +66,10 @@ def checkAssetClass(ticker):
 
 def calcQuantity(price):
     if config.MARGIN_ALLOW == True:
-        cashAvailable = float(accountInfo.daytrading_buying_power)
+        buyingPower = float(accountInfo.daytrading_buying_power)
     else:    
-        cashAvailable = float(accountInfo.non_marginable_buying_power)
-    quantity = (cashAvailable * config.RISK_EXPOSURE) / price  # Position Size Based on Risk Exposure
+        buyingPower = float(accountInfo.non_marginable_buying_power)
+    quantity = (buyingPower * config.RISK_EXPOSURE) / price  # Position Size Based on Risk Exposure
     return quantity
 
 
@@ -97,13 +97,14 @@ def executeOrder(webhook_message):
     return result
     
 def executeBuyOrder(symbol, price):
+    checkCrypto = checkAssetClass(symbol)
     slippage_price = price * slippage
     quantity = calcQuantity(slippage_price)
     client_order_id = f"skybot1_{random.randrange(100000000)}"
-    if checkAssetClass(symbol) == AssetClass.CRYPTO:
+    if checkCrypto == AssetClass.CRYPTO:
         orderData = MarketOrderRequest(
             symbol=symbol,
-            qty=quantity,
+            qty=50000*0.26,
             side='buy',
             time_in_force='gtc',
             client_order_id=client_order_id
