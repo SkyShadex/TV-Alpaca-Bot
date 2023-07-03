@@ -7,7 +7,16 @@
 	"features": {
 		"ghcr.io/devcontainers/features/python:1": {
 			"installTools": true,
-			"version": "3.10.0"
+			"version": "3.11"
+		}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.vscode-pylance",
+				"ms-python.python",
+				"ms-azuretools.vscode-docker"
+			]
 		}
 	}
 

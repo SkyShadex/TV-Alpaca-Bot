@@ -6,5 +6,5 @@ ngrok
 python-dotenv
 matplotlib
 tradingview-screener
-MetaTrader5
+#MetaTrader5
 #git+https://github.com/AI4Finance-Foundation/FinRL.git

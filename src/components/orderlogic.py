@@ -104,7 +104,7 @@ def executeBuyOrder(symbol, price):
     if checkCrypto == AssetClass.CRYPTO:
         orderData = MarketOrderRequest(
             symbol=symbol,
-            qty=50000*0.26,
+            qty=(50000*0.26)/price,
             side='buy',
             time_in_force='gtc',
             client_order_id=client_order_id
