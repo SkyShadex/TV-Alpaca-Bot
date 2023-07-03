@@ -19,7 +19,7 @@ accountInfo = api.get_account()
 order_lock = Lock()
 
 # Start Up Message.
-start.startMessage(accountInfo.buying_power,accountInfo.daytrade_count)
+start.startMessage(accountInfo.buying_power,accountInfo.non_marginable_buying_power,accountInfo.daytrade_count)
 
 # Making the dashboard dynamic
 def fetch_orders():
