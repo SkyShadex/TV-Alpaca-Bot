@@ -102,11 +102,10 @@ def webhook():
             error_message = f"Alpaca Error: {str(e)} for {side_WH} order"
             discord.message(error_message)
 
-            if "position not found" in str(e) or "order not found" in str(e):
-                # Return 200 for good errors
+            good_errors = ["position not found", "order not found", "is not active", "asset not found"]
+            if any(error in str(e) for error in good_errors):
                 return jsonify(error=error_message), 200
             else:
-                # Return 500 for other errors
                 return jsonify(error=error_message), 500
 
 
