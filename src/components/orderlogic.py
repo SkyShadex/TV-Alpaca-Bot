@@ -83,6 +83,7 @@ def calcRR(price):
     stopLoss = round((((0.1*config.RISK) * price) - price)*-1, 2)
     takeProfit = round((((0.1*config.RISK)*config.REWARD) * price) + price, 2)
     return stopLoss, takeProfit
+    
 # ============================== Execution Logic =================================
 def executeOrder(webhook_message):
     symbol_WH,side_WH,price_WH,quantity_WH,comment_WH,orderID_WH = vars.webhook(webhook_message)
@@ -108,9 +109,13 @@ def executeBuyOrder(symbol, price):
     quantity = calcQuantity(slippage_price)
     client_order_id = f"skybot1_{random.randrange(100000000)}"
     if checkCrypto == AssetClass.CRYPTO:
+        if float(accountInfo.non_marginable_buying_power)*0.3 > 30000:
+            qtyrsk = (50000*0.26)/price
+        else:
+            qtyrsk = ((float(accountInfo.daytrading_buying_power)/2)*0.26)/price
         orderData = MarketOrderRequest(
             symbol=symbol,
-            qty=(50000*0.26)/price,
+            qty=qtyrsk,
             side='buy',
             time_in_force='gtc',
             client_order_id=client_order_id
