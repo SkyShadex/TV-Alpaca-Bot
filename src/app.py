@@ -64,6 +64,16 @@ def screen():
     return jsonify(response)
 
 
+@app.route('/mt5client', methods=['GET'])
+def mt5client():
+    return "Hello from Flask!"
+
+@app.route('/mt5client', methods=['POST'])
+def mt5client_post():
+    # Code for handling the POST request goes here
+    return 'This is the POST method response'
+
+
 @app.route('/portfolio', methods=['GET'])
 def portDisplay():
     plot_filename = 'portfolioperformance.png'
@@ -81,10 +91,15 @@ def webhook():
     if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
         return {'code': 'error', 'message': 'nice try buddy'}
 
+    if webhook_message.get('strategyid'):
+        strategyid_WH = webhook_message['strategyid']
+    else:
+        strategyid_WH = "Missing ID"
+
     symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, orderID_WH = vars.webhook(
         webhook_message)
-    content = f"Strategy Alert Triggered: {side_WH}({comment_WH}) {quantity_WH} shares of {symbol_WH} @ {round(price_WH,3)}."
-    print(content)
+    content = f"Strategy Alert: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {strategyid_WH}"
+    #print(content)
     discord.message(content)
 
     with order_lock:
@@ -93,7 +108,7 @@ def webhook():
 
             if isinstance(response, Order):
                 orderInfo = vars.extract_order_response(response)
-                content = f"Alpaca Response: Order executed successfully. {orderInfo['qty']} of {orderInfo['symbol']} submitted at {orderInfo['submitted_at']}"
+                content = f"Alpaca: Order executed successfully -|- {orderInfo['qty']} units of {orderInfo['symbol']} -|- Timestamp: {orderInfo['submitted_at']}"
                 discord.message(content)
                 print(content)
                 return jsonify(message='Order executed successfully!', orderInfo=orderInfo)
