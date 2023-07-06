@@ -115,7 +115,7 @@ def executeBuyOrder(symbol, price):
             qtyrsk = ((float(accountInfo.daytrading_buying_power)/2)*0.26)/price
         orderData = MarketOrderRequest(
             symbol=symbol,
-            qty=qtyrsk,
+            qty=quantity*1.1,
             side='buy',
             time_in_force='gtc',
             client_order_id=client_order_id
