@@ -1,20 +1,25 @@
-import socket
+import datetime
+from components import vars
 
-ADDR = "localhost"
-PORT = 8466
 
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.bind((ADDR, PORT))
-server_socket.listen(10)
+def main(webhook_message):
+    # Extract variables from webhook_message
+    symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
 
-connection, addr = server_socket.accept()
-print("[INFO]\t", addr, "connected")
+    # Store the extracted variables in a local file
+    store_data(symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, orderID_WH)
 
-msg = connection.recv(1024).decode()
-print("[INFO]\tReceived message:", msg)
 
-response = "Hello"
-connection.send(response.encode())
+def store_data(symbol, side, price, quantity, comment, orderID):
+    
+    current_datetime = datetime.datetime.utcnow()
+    timestamp = current_datetime.timestamp()
 
-connection.close()
-server_socket.close()
+    # Open the file in write mode
+    with open('logs/data.txt', 'w+') as file:
+        # Write the data to the file
+        file.write(f"Timestamp: {timestamp}, Symbol: {symbol}, Side: {side}, Price: {price}, Quantity: {quantity}, Comment: {comment}, Order ID: {orderID}")
+
+
+def read_data():
+    return
