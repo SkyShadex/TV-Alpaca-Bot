@@ -29,8 +29,6 @@ order_lock = Lock()
 start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count)
 
 # Making the dashboard dynamic
-
-
 def fetch_orders():
     orderParams = GetOrdersRequest(status='all', limit=100, nested=True)
     orders = api.get_orders(filter=orderParams)
@@ -41,9 +39,9 @@ def fetch_account_info():
     account_info = api.get_account()
     return account_info
 
+
+
 # Flask Routes
-
-
 @app.route('/')
 def dashboard():
     orders = fetch_orders()
@@ -152,7 +150,7 @@ def webhook():
             error_message = f"Alpaca Error: {str(e)} for {side_WH} order"
             discord.message(error_message)
 
-            good_errors = ["position not found", "order not found", "is not active", "asset not found"]
+            good_errors = ["position not found", "order not found", "is not active", "asset not found", "not tradable", "insufficient balance for USD"]
             if any(error in str(e) for error in good_errors):
                 return jsonify(error=error_message), 200
             else:

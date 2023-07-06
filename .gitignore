@@ -129,3 +129,5 @@ dmypy.json
 .pyre/
 src/static/portfolioperformance.png
 src/logs/data.txt
+src/app.py
+src/static/portfolioperformance.png
