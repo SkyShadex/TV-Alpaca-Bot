@@ -14,8 +14,9 @@ from flask import (Flask, abort, jsonify, render_template,
 
 import config
 from commons import start
-from components import backtest, discord, orderlogic, portfolio, vars
+from components import backtest, discord, orderlogic, portfolio, vars, Clients
 from components.api_alpaca import api
+import components.Clients.mt5_server as mt5
 from components.techanalysis import screener
 
 app = Flask(__name__)
@@ -66,12 +67,46 @@ def screen():
 
 @app.route('/mt5client', methods=['GET'])
 def mt5client():
-    return "Hello from Flask!"
+    file_path = 'logs/data.txt'
+
+    # Check if the file exists
+    if not os.path.isfile(file_path):
+        response = {'error': 'File not found'}
+        return json.dumps(response), 404
+
+    # Read the content of the text file
+    with open(file_path, 'r') as file:
+        file_content = file.read()
+
+    # Create a JSON response with the file content
+    response = {'file_content': file_content}
+
+    # Return the JSON response
+    return json.dumps(response)
 
 @app.route('/mt5client', methods=['POST'])
 def mt5client_post():
-    # Code for handling the POST request goes here
-    return 'This is the POST method response'
+    webhook_message = json.loads(request.data)
+    logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
+    logging.info('Webhook message received: %s', webhook_message)
+
+    if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
+        return {'code': 'error', 'message': 'nice try buddy'}
+
+    #Process and Store Value
+    mt5.main(webhook_message)
+
+    if webhook_message.get('strategyid'):
+        strategyid_WH = webhook_message['strategyid']
+    else:
+        strategyid_WH = "Missing ID"
+
+    symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
+    content = f"Strategy Alert [MT5]: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {strategyid_WH}"
+    discord.message(content)
+
+    response = "Response Recorded."
+    return jsonify(response), 200
 
 
 @app.route('/portfolio', methods=['GET'])
