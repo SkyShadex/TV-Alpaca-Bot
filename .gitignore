@@ -128,3 +128,4 @@ dmypy.json
 # Pyre type checker
 .pyre/
 src/static/portfolioperformance.png
+src/logs/data.txt
