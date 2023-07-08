@@ -15,7 +15,8 @@
 			"extensions": [
 				"ms-python.vscode-pylance",
 				"ms-python.python",
-				"ms-azuretools.vscode-docker"
+				"ms-azuretools.vscode-docker",
+				"L-I-V.mql-tools"
 			]
 		}
 	}
