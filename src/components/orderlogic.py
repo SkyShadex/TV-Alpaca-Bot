@@ -72,7 +72,8 @@ def checkAssetClass(ticker):
 
 def calcQuantity(price):
     if config.MARGIN_ALLOW == True:
-        buyingPower = float(accountInfo.daytrading_buying_power)
+        buyingPower = float(accountInfo.portfolio_value)
+        # buyingPower = float(accountInfo.daytrading_buying_power)
     else:    
         buyingPower = float(accountInfo.non_marginable_buying_power)
     quantity = (buyingPower * config.RISK_EXPOSURE) / price  # Position Size Based on Risk Exposure
