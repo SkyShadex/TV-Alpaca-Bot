@@ -1,7 +1,8 @@
 import json
 import logging
 import os
-from threading import Lock
+import time
+from threading import Lock, Thread
 
 import requests
 from alpaca.common import exceptions
@@ -14,8 +15,9 @@ from flask import (Flask, abort, jsonify, render_template,
 
 import config
 from commons import start
-from components import backtest, discord, orderlogic, portfolio, vars, Clients
+from components import discord, orderlogic, portfolio, vars, Clients
 from components.api_alpaca import api
+from components.RiskManager import backtest
 import components.Clients.mt5_server as mt5
 from components.techanalysis import screener
 
@@ -63,9 +65,57 @@ def screen():
     return jsonify(response)
 
 
+file_path = 'logs/data.txt'
+lock_file_path = 'logs/lock.txt'
+post_buffer = []
+
+def process_post_requests():
+    while True:
+        if post_buffer:
+            webhook_message = post_buffer.pop(0)
+            logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
+            logging.info('Webhook message received: %s', webhook_message)
+
+            if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
+                continue
+
+            # Check if the lock file exists
+            if os.path.isfile(lock_file_path):
+                continue
+
+            # Create the lock file
+            with open(lock_file_path, 'w') as lock_file:
+                lock_file.write('locked')
+
+            # Process and Store Value
+            mt5.main(webhook_message)
+
+            if webhook_message.get('strategyid'):
+                strategyid_WH = webhook_message['strategyid']
+            else:
+                strategyid_WH = "Missing ID"
+
+            symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
+            content = f"Strategy Alert [MT5]: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {strategyid_WH}"
+            discord.message(content)
+            response = "Response Recorded."
+
+            # Remove the lock file
+            if os.path.isfile(lock_file_path):
+                os.remove(lock_file_path)
+
+        # Sleep for a while before checking the buffer again
+        time.sleep(1)
+
+# Start the background process for processing POST requests
+post_thread = Thread(target=process_post_requests)
+post_thread.start()
+
 @app.route('/mt5client', methods=['GET'])
 def mt5client():
-    file_path = 'logs/data.txt'
+    # Check if the lock file exists
+    if os.path.isfile(lock_file_path):
+        return jsonify({'message': 'File is being updated. Try again later.'}), 503
 
     # Check if the file exists
     if not os.path.isfile(file_path):
@@ -91,20 +141,13 @@ def mt5client_post():
     if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
         return {'code': 'error', 'message': 'nice try buddy'}
 
-    #Process and Store Value
-    mt5.main(webhook_message)
+    # Add the request data to the post_buffer
+    post_buffer.append(webhook_message)
 
-    if webhook_message.get('strategyid'):
-        strategyid_WH = webhook_message['strategyid']
-    else:
-        strategyid_WH = "Missing ID"
+    response = "Request Buffered."
 
-    symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
-    content = f"Strategy Alert [MT5]: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {strategyid_WH}"
-    discord.message(content)
-
-    response = "Response Recorded."
     return jsonify(response), 200
+
 
 
 @app.route('/portfolio', methods=['GET'])

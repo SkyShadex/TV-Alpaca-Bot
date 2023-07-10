@@ -83,6 +83,12 @@ def calcRR(price):
     stopLoss = round((((0.1*config.RISK) * price) - price)*-1, 2)
     takeProfit = round((((0.1*config.RISK)*config.REWARD) * price) + price, 2)
     return stopLoss, takeProfit
+
+def extendedHoursCheck():
+    if api.get_clock().is_open:
+        return True
+    else:
+        return False
     
 # ============================== Execution Logic =================================
 def executeOrder(webhook_message):
@@ -125,18 +131,32 @@ def executeBuyOrder(symbol, price):
         stopLoss, takeProfit = calcRR(price)
         take_profit = {"limit_price": takeProfit}
         stop_loss = {"stop_price": stopLoss}
-        orderData = LimitOrderRequest(
-            symbol=symbol,
-            qty=round(quantity),
-            side='buy',
-            type='limit',
-            time_in_force='gtc',
-            limit_price=round(slippage_price,2),
-            order_class='bracket',
-            take_profit=take_profit,
-            stop_loss=stop_loss,
-            client_order_id=client_order_id
-        )
+        if config.EXTENDTRADE_ALLOW and not extendedHoursCheck():  
+            orderData = LimitOrderRequest(
+                symbol=symbol,
+                qty=round(quantity),
+                side='buy',
+                type='limit',
+                time_in_force='day',
+                limit_price=round(slippage_price,2),
+                extended_hours=str(extendedHoursCheck()),
+                take_profit=take_profit,
+                stop_loss=stop_loss,
+                client_order_id=client_order_id
+            )
+        else:   
+            orderData = LimitOrderRequest(
+                symbol=symbol,
+                qty=round(quantity),
+                side='buy',
+                type='limit',
+                time_in_force='gtc',
+                limit_price=round(slippage_price,2),
+                order_class='bracket',
+                take_profit=take_profit,
+                stop_loss=stop_loss,
+                client_order_id=client_order_id
+            )
         response = f"Limit Order, buy: {symbol} @ {slippage_price}. {round(quantity)} shares, 'gtc'."
     
     print(response)
