@@ -11,7 +11,7 @@ import pandas as pd
 
 
 def collectOrders():
-    orderParams = GetOrdersRequest(status='all', limit=500, nested=False)
+    orderParams = GetOrdersRequest(status='closed', limit=500, nested=False)
     orders = api.get_orders(filter=orderParams)
     
     df_data = [vars.extract_order_response(order) for order in orders if order.status.value == 'filled']

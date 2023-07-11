@@ -14,7 +14,6 @@ def store_data(symbol, side, price, quantity, comment, orderID):
     
     current_datetime = datetime.datetime.utcnow()
     timestamp = current_datetime.timestamp()
-
     # Open the file in write mode
     with open('logs/data.txt', 'w+') as file:
         # Write the data to the file
