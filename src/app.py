@@ -20,6 +20,7 @@ from components.api_alpaca import api
 from components.RiskManager import backtest
 import components.Clients.mt5_server as mt5
 from components.techanalysis import screener
+from components.RiskManager import DataAnalysis as da
 
 app = Flask(__name__)
 
@@ -152,10 +153,12 @@ def mt5client_post():
 
 @app.route('/portfolio', methods=['GET'])
 def portDisplay():
-    plot_filename = 'portfolioperformance.png'
-    portfolio.graph(plot_filename)
+    portfolio_plot = 'portfolioperformance.png'
+    asset_plot = 'assetperformance.png'
+    portfolio.graph(plot_filename=portfolio_plot)
     backtest.collectOrders()
-    return render_template('portfolio.html', plot_filename=plot_filename)
+    da.dataCrunch(plot_filename=asset_plot)
+    return render_template('portfolio.html', portfolio_plot=portfolio_plot, asset_plot=asset_plot)
 
 
 @app.route('/webhook', methods=['POST'])
