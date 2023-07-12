@@ -2,6 +2,8 @@ import json
 import math
 import random
 import time
+import datetime
+import pytz
 
 import requests
 from alpaca.common import exceptions
@@ -86,10 +88,15 @@ def calcRR(price):
     return stopLoss, takeProfit
 
 def extendedHoursCheck():
-    if api.get_clock().is_open:
+    current_time = datetime.datetime.now().astimezone(pytz.timezone('US/Eastern'))
+    trading_hours_start = current_time.replace(hour=9, minute=30, second=0, microsecond=0)
+    trading_hours_end = current_time.replace(hour=16, minute=0, second=0, microsecond=0)
+
+    if current_time < trading_hours_start or current_time >= trading_hours_end:
         return True
     else:
         return False
+
     
 # ============================== Execution Logic =================================
 def executeOrder(webhook_message):
@@ -132,7 +139,8 @@ def executeBuyOrder(symbol, price):
         stopLoss, takeProfit = calcRR(price)
         take_profit = {"limit_price": takeProfit}
         stop_loss = {"stop_price": stopLoss}
-        if config.EXTENDTRADE_ALLOW and not extendedHoursCheck():  
+        if config.EXTENDTRADE_ALLOW and extendedHoursCheck(): 
+            print('Extended Hours!') 
             orderData = LimitOrderRequest(
                 symbol=symbol,
                 qty=round(quantity),
