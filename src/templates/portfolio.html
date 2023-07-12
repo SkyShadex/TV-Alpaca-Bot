@@ -11,12 +11,19 @@
             
             <div class="tab">
                 <button class="tab-button active" onclick="openTab('portfolio')">Portfolio</button>
+                <button class="tab-button active" onclick="openTab('asset')">Asset Performance</button>
             </div>
 
             <div id="portfolio" class="tab-content active">
                 <h2>Portfolio</h2>
-                <img id="graph" src="{{ url_for('static', filename=plot_filename) }}" alt="Equity Plot" >
+                <img id="graph" src="{{ url_for('static', filename=portfolio_plot) }}" alt="Equity Plot" >
             </div>
+
+            <div id="asset" class="tab-content active"></div>
+                <h2>Asset Performance</h2>
+                <img id="graph" src="{{ url_for('static', filename=asset_plot) }}" alt="Asset Plot" >
+            </div>
+            
 
             
         </div>

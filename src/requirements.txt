@@ -7,5 +7,6 @@ python-dotenv
 matplotlib
 tradingview-screener
 pandas
+pytz
 #MetaTrader5
 #git+https://github.com/AI4Finance-Foundation/FinRL.git
