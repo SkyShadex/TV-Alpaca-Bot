@@ -12,6 +12,7 @@ from alpaca.trading.models import Order
 from alpaca.trading.requests import GetOrdersRequest
 from flask import (Flask, abort, jsonify, render_template,
                    render_template_string, request)
+from flask_caching import Cache
 
 import config
 from commons import start
@@ -23,6 +24,7 @@ from components.techanalysis import screener
 from components.RiskManager import DataAnalysis as da
 
 app = Flask(__name__)
+cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
 # Declaring some variables
 accountInfo = api.get_account()
@@ -162,6 +164,7 @@ def portDisplay():
 
 
 @app.route('/webhook', methods=['POST'])
+@cache.cached(timeout=20)  # Cache responses for 60 seconds
 def webhook():
     webhook_message = json.loads(request.data)
     logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)

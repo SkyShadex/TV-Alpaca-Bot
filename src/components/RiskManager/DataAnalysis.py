@@ -15,56 +15,36 @@ def dataCrunch(plot_filename):
 
     for symbol in symbols:
         symbol_df = df[df['symbol'] == symbol]
+
+        # Check if there is an open position
+        if symbol_df['side'].nunique() == 1:
+            continue  # Skip this symbol if it has an open position
+
+        # Step 2: Calculate total amounts for sell and buy orders
+        sell_amount = symbol_df[symbol_df['side'] == 'sell']['amount'].sum()
+        buy_amount = symbol_df[symbol_df['side'] == 'buy']['amount'].sum()
         sell_qty = symbol_df[symbol_df['side'] == 'sell']['filled_qty'].sum()
         buy_qty = symbol_df[symbol_df['side'] == 'buy']['filled_qty'].sum()
 
+        # Step 3: Calculate cumulative profit/loss for the symbol
+        pnl = sell_amount - buy_amount
         net_qty = sell_qty - buy_qty
 
-        if net_qty != 0:
-            # Open position
-            symbol_df = symbol_df.sort_values('created_at', ascending=False)
-            latest_order = symbol_df.iloc[0]  # Get the latest order
-            open_position = latest_order[['symbol', 'side', 'filled_avg_price', 'filled_qty']]
-            open_position['pnl'] = 0.0  # Set the P/L for the open position
-
-            # Step 4: Filter closed orders
-            closed_orders = symbol_df[symbol_df['client_order_id'] != latest_order['client_order_id']]
-
-            total_sell_amount = closed_orders[closed_orders['side'] == 'sell']['amount'].sum()
-            total_buy_amount = closed_orders[closed_orders['side'] == 'buy']['amount'].sum()
-
-            total_sell_qty = sell_qty
-            total_buy_qty = buy_qty
-
-            pnl = total_sell_amount - total_buy_amount
-            if total_sell_amount != 0:
-                closed_positions.append(
-                    (symbol, net_qty, total_sell_qty, total_buy_qty, pnl, total_sell_amount, total_buy_amount)
-                )
-
-        else:
-            # No open position, calculate P/L for all orders
-            total_sell_amount = symbol_df[symbol_df['side'] == 'sell']['amount'].sum()
-            total_buy_amount = symbol_df[symbol_df['side'] == 'buy']['amount'].sum()
-
-            total_sell_qty = sell_qty
-            total_buy_qty = buy_qty
-
-            pnl = total_sell_amount - total_buy_amount
-            if total_sell_amount != 0 or total_buy_amount != 0:
-                closed_positions.append(
-                    (symbol, net_qty, total_sell_qty, total_buy_qty, pnl, total_sell_amount, total_buy_amount)
-                )
-
+        closed_positions.append((symbol, pnl, net_qty, sell_qty, buy_qty, sell_amount, buy_amount))
+ 
     # Create a DataFrame for closed positions
     closed_positions_df = pd.DataFrame(
-        closed_positions,
-        columns=['symbol', 'pnl', 'net_qty', 'total_sell_qty', 'total_buy_qty', 'total_sell_amount', 'total_buy_amount']
-    )
+    closed_positions,
+    columns=['symbol', 'pnl', 'net_qty', 'total_sell_qty', 'total_buy_qty', 'total_sell_amount', 'total_buy_amount'])
     df_sorted = closed_positions_df.sort_values('pnl', ascending=False)
 
+    # Step 5: Sort the DataFrame by pnl in descending order
+    closed_positions_df_sorted = closed_positions_df.sort_values('pnl', ascending=False)
 
-    
+    # Step 6: Calculate the total pnl of all symbols
+    total_pl = closed_positions_df_sorted['pnl'].sum()
+
+
     # Calculate the total P/L of all symbols
     total_pl = df_sorted['pnl'].sum()
 
