@@ -78,7 +78,10 @@ def calcQuantity(price):
         #buyingPower = float(accountInfo.daytrading_buying_power)
     else:    
         buyingPower = float(accountInfo.non_marginable_buying_power)
-    quantity = (buyingPower * config.RISK_EXPOSURE) / price  # Position Size Based on Risk Exposure
+    if float(accountInfo.long_market_value) < float(accountInfo.cash):    
+        quantity = (buyingPower * config.RISK_EXPOSURE) / price  # Position Size Based on Risk Exposure
+    else:
+        quantity = (buyingPower * config.RISK_EXPOSURE/2) / price  # Position Size Based on Risk Exposure
     return quantity
 
 
