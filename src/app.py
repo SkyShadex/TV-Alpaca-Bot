@@ -15,7 +15,7 @@ from flask import (Flask, abort, jsonify, render_template,
 
 import config
 from commons import start
-from components import discord, orderlogic, portfolio, vars, Clients
+from components import discord, orderlogic, portfolio, vars
 from components.api_alpaca import api
 from components.RiskManager import backtest
 import components.Clients.mt5_server as mt5
