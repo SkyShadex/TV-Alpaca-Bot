@@ -7,7 +7,7 @@ def dataCrunch(plot_filename):
     time.sleep(2)
     df = pd.read_csv('/workspaces/TV-Alpaca-Bot/src/logs/orders.csv')
 
-    # Calculate total amount for each row and add it to the dataframe
+    # Step 1: Calculate total amount for each row and add it to the dataframe
     df['amount'] = df['filled_qty'] * df['filled_avg_price']
 
     symbols = df['symbol'].unique()
@@ -22,12 +22,13 @@ def dataCrunch(plot_filename):
 
         if net_qty != 0:
             # Open position
-            symbol_df = symbol_df.sort_values('filled_at', ascending=False)
-            #latest_order = symbol_df.iloc[-1]  # Get the latest order
-            #open_position = latest_order[['symbol', 'side', 'filled_avg_price', 'filled_qty']]
-            #open_position['pnl'] = 0.0  # Set the P/L for the open position
+            symbol_df = symbol_df.sort_values('created_at', ascending=False)
+            latest_order = symbol_df.iloc[0]  # Get the latest order
+            open_position = latest_order[['symbol', 'side', 'filled_avg_price', 'filled_qty']]
+            open_position['pnl'] = 0.0  # Set the P/L for the open position
 
-            closed_orders = symbol_df[:-1]  # Exclude the latest order for closed positions
+            # Step 4: Filter closed orders
+            closed_orders = symbol_df[symbol_df['client_order_id'] != latest_order['client_order_id']]
 
             total_sell_amount = closed_orders[closed_orders['side'] == 'sell']['amount'].sum()
             total_buy_amount = closed_orders[closed_orders['side'] == 'buy']['amount'].sum()
@@ -50,7 +51,7 @@ def dataCrunch(plot_filename):
             total_buy_qty = buy_qty
 
             pnl = total_sell_amount - total_buy_amount
-            if pnl != 0:
+            if total_sell_amount != 0 or total_buy_amount != 0:
                 closed_positions.append(
                     (symbol, net_qty, total_sell_qty, total_buy_qty, pnl, total_sell_amount, total_buy_amount)
                 )
