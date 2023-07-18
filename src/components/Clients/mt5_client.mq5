@@ -14,7 +14,7 @@ input int      Port = 5000;
 input int      Pyramid = 5;
 input double   Risk = 5;
 input double   Reward = 3;
-input double   Max_Lot = 1.63;
+input double   Lot_Override = 0;
 input double   StopLossPoints = 6;
 datetime previousDateTime = 0;
 bool         ExtTLS =false;
@@ -117,7 +117,7 @@ string HTTPRecv(int socket, uint timeout)
 //+------------------------------------------------------------------+
 void OnTimer()
   {
-   serverClock();
+   //serverClock();
    socketSystem();
   }
 
@@ -136,7 +136,7 @@ void socketSystem()
      }
 
 // Connect to the server
-   if(!SocketConnect(socket, Address, Port, 500))
+   if(!SocketConnect(socket, Address, Port, 1500))
      {
       Print("Connection to ", Address, ":", Port, " failed, error ", GetLastError());
       SocketClose(socket); // Close the socket in case of a connection failure
@@ -253,8 +253,8 @@ void Parse(string payload)
      {
       // Print the extracted variables
       Print("");
-      Print("");
-      Print("New Order Found! ", side, "Price:", DoubleToString(price));
+      Print("<=========================== New Order =====================================>");
+      Print(_Symbol,": ",side, "Price:", DoubleToString(price));
       pushOrder(side, price);
      }
    previousDateTime = dateTime;
@@ -268,36 +268,40 @@ void Parse(string payload)
 void pushOrder(string side,double price)
   {
    price = NormalizeDouble(price,_Digits);
-   if(_Symbol=="XRPUSD")
-     {
-      price = syminfo.NormalizePrice(price/100);
-     }
    double ticksize = SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
    double ask = SymbolInfoDouble(_Symbol,SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol,SYMBOL_BID);
-   double spread = MathAbs(ask-bid);
    double source = ask;
-//double priceWithinDeviation = (price > ask*1.1 || price < ask*0.9 ) ? ask : price;  // Replace invalid price with ask price within deviation
+   double spread = NormalizeDouble(MathAbs(ask-bid),_Digits);
+//double priceWithinDeviation = (price > ask*1.1 || price < ask*0.9 ) ? bid : price;  // Replace invalid price with ask price within deviation
    double newprice = MathMax(source,price);
    double sl = newprice - StopLossPoints * ticksize;
    sl = syminfo.NormalizePrice(sl-spread);
    double slDistance = newprice - sl;
    double tp = syminfo.NormalizePrice(newprice + MathAbs(slDistance*Reward));
    double lots = calcLots(slDistance);
-//if(sl < 0){
-//   sl = MathAbs(sl);
-//}
-   Print(_Symbol," [Order Payload]: ","Ask: ",ask,", Bid: ",bid,", Spread: ",spread,", Price: ",price," ===================================>");
-   Print(_Symbol," [Order Payload]: ","New Price: ",newprice,", SL: ",sl," TP: ",tp,", Lots: ",lots," ===================================>");
    if(StringFind(side, "buy") >= 0)
      {
-      trade.BuyLimit(lots,ask,_Symbol,sl,tp,ORDER_TIME_GTC,0,NULL);
+      if(Lot_Override != 0)
+        {
+         lots = Lot_Override;
+        }
+      if(sl > newprice)
+        {
+         sl=0;
+         tp=0;
+        }
+      Print(_Symbol," [Order Payload]: ","Ask: ",ask,", Bid: ",bid,", Spread: ",spread,", Price: ",price," ===================================>"," [Order Payload]: ","New Price: ",newprice,", SL: ",sl," TP: ",tp,", Lots: ",lots," ===================================>");
       Print("Order Placed");
+      trade.BuyLimit(lots,ask,_Symbol,sl,tp,ORDER_TIME_GTC,0,NULL);
+
      }
+
    if(StringFind(side, "sell") >= 0)
      {
       CloseAllPositions();
      }
+
   }
 
 //+------------------------------------------------------------------+
@@ -331,15 +335,36 @@ void CloseAllPositions()
      }
    if(positionsClosed || ordersClosed)
      {
-      Print("Closing Positions");
+      Print(_Symbol,": Closing Positions");
      }
    else
      {
-      Print("No Open Positions Found");
+      Print(_Symbol,": No Open Positions Found");
      }
   }
 
-
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+int HistoryDealGetStreak()
+  {
+//---
+   HistorySelect(iTime(_Symbol,PERIOD_D1,0),TimeCurrent());
+   int total=HistoryDealsTotal();
+   ulong ticket;
+   int wins=0;
+   for(int i=total-1; i>=0; i--)
+     {
+      if((ticket=HistoryDealGetTicket(i))>0)
+        {
+         if(HistoryDealGetDouble(ticket,DEAL_PROFIT)<0)
+            return(WRONG_VALUE);
+         wins++;
+        }
+     }
+//---
+   return(wins);
+  }
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -347,38 +372,60 @@ void CloseAllPositions()
 double calcLots(double slDistance)
   {
    double sld = slDistance;
-   double ticksize = SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
-   double tickvalue = SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_VALUE);
-   double lotstep = SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+   double ticksize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   double tickvalue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   double lotstep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   Print(sld, " ", ticksize, " ", tickvalue, " ", lotstep);
 
    if(ticksize == 0 || tickvalue == 0 || lotstep == 0)
      {
-      Print(__FUNCTION__,1," > Lotsize cannot be calculated...");
+      Print(__FUNCTION__, 1, " > Lotsize cannot be calculated...");
       return 0;
      }
 
-   double riskMoney = AccountInfoDouble(ACCOUNT_MARGIN_FREE)*(Risk/100);
-   Print("RISK: ",riskMoney, "===================================>");
+   double riskMoney = NormalizeDouble(AccountInfoDouble(ACCOUNT_BALANCE) * (Risk / 100), _Digits);
    double moneyPerLotStep = (sld / ticksize) * tickvalue * lotstep;
+   Print(moneyPerLotStep);
 
    if(moneyPerLotStep == 0)
      {
-      Print(__FUNCTION__,2," > Lotsize cannot be calculated...");
+      Print(__FUNCTION__, 2, " > Lotsize cannot be calculated...");
       return 0;
      }
-   double lots = MathFloor(Risk / moneyPerLotStep) * lotstep;
-//Print(lots);
-   double minvolume = SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
-   double maxvolume = SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
 
-   if(maxvolume!=0)
-      lots = MathMin(lots,maxvolume);
-   if(minvolume!=0)
-      lots = MathMax(lots,minvolume);
-//lots = lots * Risk/10;
-//Print(lots);
-   lots = NormalizeDouble(lots,2);
-//Print(lots);
+   double lots = (Risk / moneyPerLotStep) * lotstep;
+   lots = MathAbs(lots);
+   Print("RISK: ", riskMoney);
+   Print("LOTS: ", lots);
+
+   double minvolume = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double maxvolume = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+
+   int consecutiveWins = HistoryDealGetStreak();
+   Print("Consecutive Wins: ",consecutiveWins);
+   if(consecutiveWins > 0)
+     {
+      // Increase lot size logarithmically on each consecutive win
+      lots *= MathLog(consecutiveWins + 1);
+     }
+
+   if(maxvolume != 0)
+      lots = MathMin(lots, maxvolume);
+   if(minvolume != 0)
+     {
+      if(minvolume == 1)
+        {
+         lots = MathMax(lots, minvolume);
+        }
+      else
+        {
+         lots = MathMax(lots, minvolume);
+        }
+     }
+
+   lots = NormalizeDouble(lots, 2);
+// Print(lots);
    return lots;
   }
+
 //+------------------------------------------------------------------+

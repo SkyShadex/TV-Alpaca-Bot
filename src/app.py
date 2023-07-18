@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import time
+import queue
+import threading
 from threading import Lock, Thread
 
 import requests
@@ -67,52 +69,65 @@ def screen():
     response = screener.test()
     return jsonify(response)
 
+@app.route('/portfolio', methods=['GET'])
+def portDisplay():
+    portfolio_plot = 'portfolioperformance.png'
+    asset_plot = 'assetperformance.png'
+    portfolio.graph(plot_filename=portfolio_plot)
+    backtest.collectOrders()
+    da.dataCrunch(plot_filename=asset_plot)
+    return render_template('portfolio.html', portfolio_plot=portfolio_plot, asset_plot=asset_plot)
+
 
 file_path = 'logs/data.txt'
 lock_file_path = 'logs/lock.txt'
-post_buffer = []
+post_buffer = queue.Queue()
 
 def process_post_requests():
     while True:
-        if post_buffer:
-            webhook_message = post_buffer.pop(0)
-            logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
-            logging.info('Webhook message received: %s', webhook_message)
+        try:
+            webhook_message = post_buffer.get(timeout=3)  # Wait for 1 second to get a message from the queue
+        except queue.Empty:
+            continue  # If the queue is empty, continue waiting for messages
 
-            if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
-                continue
+        #logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
+        #logging.info('Webhook message received: %s', webhook_message)
 
-            # Check if the lock file exists
-            if os.path.isfile(lock_file_path):
-                continue
+        if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
+            continue
 
-            # Create the lock file
-            with open(lock_file_path, 'w') as lock_file:
-                lock_file.write('locked')
+        # Check if the lock file exists
+        if os.path.isfile(lock_file_path):
+            continue
 
-            # Process and Store Value
-            mt5.main(webhook_message)
+        # Create the lock file
+        with open(lock_file_path, 'w') as lock_file:
+            lock_file.write('locked')
 
-            if webhook_message.get('strategyid'):
-                strategyid_WH = webhook_message['strategyid']
-            else:
-                strategyid_WH = "Missing ID"
+        # Process and Store Value
+        mt5.main(webhook_message)
 
-            symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
-            content = f"Strategy Alert [MT5]: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {strategyid_WH}"
-            discord.message(content)
-            response = "Response Recorded."
+        if webhook_message.get('strategyid'):
+            strategyid_WH = webhook_message['strategyid']
+        else:
+            strategyid_WH = "Missing ID"
 
-            # Remove the lock file
-            if os.path.isfile(lock_file_path):
-                os.remove(lock_file_path)
+        symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
+        content = f"Strategy Alert [MT5]: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {strategyid_WH}"
+        discord.message(content)
+        response = "Response Recorded."
 
-        # Sleep for a while before checking the buffer again
-        time.sleep(1)
+        # Remove the lock file
+        if os.path.isfile(lock_file_path):
+            os.remove(lock_file_path)
 
 # Start the background process for processing POST requests
 post_thread = Thread(target=process_post_requests)
 post_thread.start()
+
+def get_file_content():
+    with open(file_path, 'r') as file:
+        return file.read()
 
 @app.route('/mt5client', methods=['GET'])
 def mt5client():
@@ -125,53 +140,53 @@ def mt5client():
         response = {'error': 'File not found'}
         return json.dumps(response), 404
 
+    # Use cache key based on the file modification timestamp
+    cache_key = f'mt5client:{os.path.getmtime(file_path)}'
+    
+    # Try to retrieve the response from cache
+    response = cache.get(cache_key)
+    if response is not None:
+        return json.dumps(response)
+
     # Read the content of the text file
-    with open(file_path, 'r') as file:
-        file_content = file.read()
+    file_content = get_file_content()
 
     # Create a JSON response with the file content
     response = {'file_content': file_content}
 
+    # Cache the response
+    cache.set(cache_key, response, timeout=3)
+
     # Return the JSON response
     return json.dumps(response)
 
-@app.route('/mt5client', methods=['POST'])
-def mt5client_post():
-    webhook_message = json.loads(request.data)
-    logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
-    logging.info('Webhook message received: %s', webhook_message)
 
-    if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
-        return {'code': 'error', 'message': 'nice try buddy'}
-
-    # Add the request data to the post_buffer
-    post_buffer.append(webhook_message)
-
-    response = "Request Buffered."
-
-    return jsonify(response), 200
-
-
-
-@app.route('/portfolio', methods=['GET'])
-def portDisplay():
-    portfolio_plot = 'portfolioperformance.png'
-    asset_plot = 'assetperformance.png'
-    portfolio.graph(plot_filename=portfolio_plot)
-    backtest.collectOrders()
-    da.dataCrunch(plot_filename=asset_plot)
-    return render_template('portfolio.html', portfolio_plot=portfolio_plot, asset_plot=asset_plot)
-
-
+buffer_lock = threading.Lock()
 @app.route('/webhook', methods=['POST'])
-@cache.cached(timeout=20)  # Cache responses for 60 seconds
+@cache.cached(timeout=3)
 def webhook():
-    webhook_message = json.loads(request.data)
-    logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
-    logging.info('Webhook message received: %s', webhook_message)
+    payload = request.data.decode("utf-8")
+    start_index = payload.find('{')
+    end_index = payload.rfind('}')
+
+    if start_index == -1 or end_index == -1 or end_index <= start_index:
+        return {'code': 'error', 'message': 'Invalid payload'}
+    extrainfo = payload[:start_index].strip()
+    cleaned_payload = payload[start_index:end_index+1]
+
+    webhook_message = json.loads(cleaned_payload)
+
+    #logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
+    #logging.info('Webhook message received: %s', webhook_message)
 
     if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
         return {'code': 'error', 'message': 'nice try buddy'}
+    
+    if "mt5" in extrainfo:
+        with buffer_lock:
+            post_buffer.put(webhook_message)
+        response = "Request Buffered."
+        return jsonify(response), 200
 
     if webhook_message.get('strategyid'):
         strategyid_WH = webhook_message['strategyid']
@@ -183,6 +198,7 @@ def webhook():
     content = f"Strategy Alert: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {strategyid_WH}"
     #print(content)
     discord.message(content)
+
 
     with order_lock:
         try:
@@ -206,5 +222,5 @@ def webhook():
                 return jsonify(error=error_message), 500
 
 
-# if __name__ == '__app__':
+#if __name__ == '__app__':
 #    app.run(debug=True)
