@@ -31,9 +31,28 @@ cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 # Declaring some variables
 accountInfo = api.get_account()
 order_lock = Lock()
+alpaca_status = True
 
 # Start Up Message.
-start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count)
+try:
+    start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count)
+    alpaca_status = True
+except:
+    print('whoopsie')
+    alpaca_status = False
+
+def check_alpaca_status():
+    if not alpaca_status:
+        return jsonify({"error": "Alpaca API is currently unavailable"}), 503
+
+@app.before_request
+def before_request():
+    # List of routes to exclude from alpaca_status check
+    excluded_routes = ['/mt5client']
+
+    if request.endpoint not in excluded_routes:
+        check_alpaca_status()
+
 
 # Making the dashboard dynamic
 def fetch_orders():
@@ -58,6 +77,9 @@ def dashboard():
 
 @app.route('/account', methods=['GET'])
 def account():
+    if not alpaca_status:
+        return jsonify({"error": "Alpaca API is currently unavailable"}), 503
+    
     payload = f'{accountInfo}'
     pretty_json = json.dumps(payload, indent=4)
     html = f"<pre>{pretty_json}</pre>"

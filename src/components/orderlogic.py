@@ -105,8 +105,8 @@ def extendedHoursCheck():
 def executeOrder(webhook_message):
     symbol_WH,side_WH,price_WH,quantity_WH,comment_WH,orderID_WH = vars.webhook(webhook_message)
     
-    if not tradingValid():
-        return "Trade not valid"
+    #if not tradingValid():
+    #    return "Trade not valid"
     
     checkOpenOrder(symbol_WH, side_WH)
       
