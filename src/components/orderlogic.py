@@ -54,11 +54,11 @@ def checkOpenOrder(ticker, side):
                     print(f"Error canceling order {order.id}: {e}")
         
         counter = len(canceled_orders)
-        response = f"Checked {counter} open order(s) for symbol {ticker}"
-        print(response)
-    else:
-        response = f"No open orders found for symbol {ticker}"
-        print(response)
+        #response = f"Checked {counter} open order(s) for symbol {ticker}"
+        #print(response)
+    #else:
+        #response = f"No open orders found for symbol {ticker}"
+        #print(response)
     
     return canceled_orders
 
