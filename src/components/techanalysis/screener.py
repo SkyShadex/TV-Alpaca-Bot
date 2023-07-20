@@ -15,14 +15,14 @@ end_date = datetime.today() - timedelta(minutes=15)
 window_size = 3
 
 # Testing trading view module
-q = Query().select('name', 'close', 'volume', 'relative_volume_10d_calc')\
-    .where(
-        Column('market_cap_basic').between(1_000_000, 50_000_000), 
-        Column('relative_volume_10d_calc') > 1.2, 
-        Column('MACD.macd') >= 'MACD.signal'
-    )\
-    .order_by('volume', ascending=False)
-df = q.get_scanner_data()
+#q = Query().select('name', 'close', 'volume', 'relative_volume_10d_calc')\
+#    .where(
+#        Column('market_cap_basic').between(1_000_000, 50_000_000), 
+#        Column('relative_volume_10d_calc') > 1.2, 
+#        Column('MACD.macd') >= 'MACD.signal'
+#    )\
+#    .order_by('volume', ascending=False)
+#df = q.get_scanner_data()
 
 
 
@@ -32,7 +32,7 @@ def test():
     dataset = BarDataset("SPY",window_size)
     dataset.organize_bars()
     data = dataset.get_data()
-    print(df)
+    #print(df)
     return data
 
 
