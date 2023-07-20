@@ -104,7 +104,7 @@ buffer_lock = threading.Lock()
 def process_post_requests():
     while True:
         try:
-            webhook_message = post_buffer.get(timeout=3)  # Wait for 1 second to get a message from the queue
+            webhook_message = post_buffer.get(timeout=1)  # Wait for 1 second to get a message from the queue
         except queue.Empty:
             continue  # If the queue is empty, continue waiting for messages
 
