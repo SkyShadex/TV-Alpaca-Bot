@@ -1,36 +1,32 @@
 from alpaca.trading.client import TradingClient
 import config
 import time
+import threading
 
 class CustomTradingClient(TradingClient):
     def __init__(self):
         super().__init__(config.API_KEY, config.API_SECRET, paper=True)
-        self.alpaca_status = True
+        self.rate_limit_lock = threading.Lock()
 
     def check_alpaca_status(self):
-        if not self.alpaca_status:
+        try:
+            with self.rate_limit_lock:
+                # Make the API request within the lock to ensure only one thread can access it at a time
+                account_info = self.get_account()
+                return True
+        except Exception as e:
+            print(f"Error occurred while checking Alpaca API status: {e}")
             return False
 
-        max_retries = 3
-        retry_delay = 5  # Number of seconds to wait before retrying
-
-        for retry in range(max_retries):
+    def call_with_rate_limit(self, func, *args, **kwargs):
+        while True:
             try:
-                account_info = self.get_account()
-                self.alpaca_status = True
-                return True
+                with self.rate_limit_lock:
+                    result = func(*args, **kwargs)
+                return result
             except Exception as e:
-                # Handle the exception and log the error (You can customize the error handling)
-                print(f"Error occurred while checking Alpaca API status: {e}")
-                if '429' in str(e):  # Check if the error is related to rate limiting
-                    print(f"Rate limit exceeded. Retrying in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                else:
-                    self.alpaca_status = False
-                    return False
-
-        print("Max retry attempts reached. Alpaca API is currently unavailable.")
-        self.alpaca_status = False
-        return False
+                # Retry after waiting for a while
+                print(f"Rate limit exceeded. Retrying in 5 seconds...")
+                time.sleep(5)
 
 api = CustomTradingClient()
