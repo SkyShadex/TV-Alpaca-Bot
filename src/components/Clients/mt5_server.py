@@ -14,10 +14,11 @@ def store_data(symbol, side, price, quantity, comment, orderID):
     
     current_datetime = datetime.datetime.utcnow()
     timestamp = current_datetime.timestamp()
+    order = f"Timestamp: {timestamp}, Symbol: {symbol}, Side: {side}, Price: {price}, Quantity: {quantity}, Comment: {comment}, Order ID: {orderID}"
     # Open the file in write mode
     with open('logs/data.txt', 'w+') as file:
         # Write the data to the file
-        file.write(f"Timestamp: {timestamp}, Symbol: {symbol}, Side: {side}, Price: {price}, Quantity: {quantity}, Comment: {comment}, Order ID: {orderID}")
+        file.write(order)
 
 
 def read_data():
