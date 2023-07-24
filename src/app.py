@@ -77,9 +77,7 @@ def dashboard():
 
 
 @app.route('/account', methods=['GET'])
-def account():
-
-    
+def account():    
     payload = f'{accountInfo}'
     pretty_json = json.dumps(payload, indent=4)
     html = f"<pre>{pretty_json}</pre>"

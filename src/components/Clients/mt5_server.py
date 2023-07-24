@@ -22,3 +22,21 @@ def store_data(symbol, side, price, quantity, comment, orderID):
 
 def read_data():
     return
+
+def main_InMem(webhook_message):
+    # Extract variables from webhook_message
+    symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
+
+    # Create a dictionary to hold the extracted data
+    data = {
+        'timestamp': datetime.datetime.utcnow().timestamp(),
+        'symbol': symbol_WH,
+        'side': side_WH,
+        'price': price_WH,
+        'quantity': quantity_WH,
+        'comment': comment_WH,
+        'orderID': orderID_WH
+    }
+
+    # Return the data dictionary
+    return data
