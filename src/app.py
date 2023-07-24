@@ -149,7 +149,6 @@ def process_post_requests():
 
         symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
         content = f"Strategy Alert [MT5]: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {strategyid_WH}"
-        print(content)
         discord.message(content)
         response = "Response Recorded."
         # Remove the lock file
