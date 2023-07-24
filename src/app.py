@@ -4,8 +4,9 @@ import os
 import time
 import queue
 import threading
+import gc
 from threading import Lock, Thread
-
+import tracemalloc
 import requests
 from alpaca.common import exceptions
 # import alpaca_trade_api as tradeapi
@@ -15,6 +16,7 @@ from alpaca.trading.requests import GetOrdersRequest
 from flask import (Flask, abort, jsonify, render_template,
                    render_template_string, request)
 from flask_caching import Cache
+
 
 import config
 from commons import start
@@ -32,6 +34,8 @@ cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 accountInfo = api.get_account()
 order_lock = Lock()
 
+tracemalloc.start()
+s = None
 
 # Start Up Message.
 start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count)
@@ -101,6 +105,21 @@ file_path = 'logs/data.txt'
 lock_file_path = 'logs/lock.txt'
 post_buffer = queue.Queue()
 buffer_lock = threading.Lock()
+
+
+@app.route("/snapshot")
+def snap():
+    global s
+    if not s:
+        s = tracemalloc.take_snapshot()
+        return "taken snapshot\n"
+    else:
+        lines = []
+        top_stats = tracemalloc.take_snapshot().compare_to(s, 'lineno')
+        for stat in top_stats[:5]:
+            lines.append(str(stat))
+        return "\n".join(lines)
+
 def process_post_requests():
     while True:
         try:
@@ -132,12 +151,13 @@ def process_post_requests():
 
         symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, orderID_WH = vars.webhook(webhook_message)
         content = f"Strategy Alert [MT5]: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {strategyid_WH}"
+        print(content)
         discord.message(content)
         response = "Response Recorded."
-
         # Remove the lock file
         if os.path.isfile(lock_file_path):
             os.remove(lock_file_path)
+
 
 # Start the background process for processing POST requests
 post_thread = Thread(target=process_post_requests)
@@ -148,6 +168,7 @@ def get_file_content():
         return file.read()
 
 @app.route('/mt5client', methods=['GET'])
+@cache.cached(timeout=2)
 def mt5client():
     # Check if the lock file exists
     if os.path.isfile(lock_file_path):
@@ -156,15 +177,7 @@ def mt5client():
     # Check if the file exists
     if not os.path.isfile(file_path):
         response = {'error': 'File not found'}
-        return json.dumps(response), 404
-
-    # Use cache key based on the file modification timestamp
-    cache_key = f'mt5client:{os.path.getmtime(file_path)}'
-    
-    # Try to retrieve the response from cache
-    response = cache.get(cache_key)
-    if response is not None:
-        return json.dumps(response)
+        return jsonify(response), 404
 
     # Read the content of the text file
     file_content = get_file_content()
@@ -172,11 +185,8 @@ def mt5client():
     # Create a JSON response with the file content
     response = {'file_content': file_content}
 
-    # Cache the response
-    cache.set(cache_key, response, timeout=3)
-
     # Return the JSON response
-    return json.dumps(response)
+    return jsonify(response)
 
 
 
@@ -240,5 +250,5 @@ def webhook():
                 return jsonify(error=error_message), 500
 
 
-#if __name__ == '__app__':
-#    app.run(debug=True)
+if __name__ == '__app__':
+    app.run(debug=False)
