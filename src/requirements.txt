@@ -9,5 +9,6 @@ matplotlib
 tradingview-screener
 pandas
 pytz
+#pyngrok
 #MetaTrader5
 #git+https://github.com/AI4Finance-Foundation/FinRL.git
