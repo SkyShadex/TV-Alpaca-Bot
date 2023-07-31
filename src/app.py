@@ -38,7 +38,7 @@ tracemalloc.start()
 s = None
 
 # Start Up Message.
-start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count)
+start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count) # type: ignore
 
 
 def check_alpaca_status():
@@ -57,7 +57,7 @@ def check_alpaca_status():
 
 # Making the dashboard dynamic
 def fetch_orders():
-    orderParams = GetOrdersRequest(status='all', limit=100, nested=True)
+    orderParams = GetOrdersRequest(status='all', limit=100, nested=True) # type: ignore
     orders = api.get_orders(filter=orderParams)
     return orders
 
@@ -165,7 +165,7 @@ def get_file_content():
         return file.read()
 
 @app.route('/mt5client', methods=['GET'])
-@cache.cached(timeout=2)
+@cache.cached(timeout=1)
 def mt5client():
     # Check if the lock file exists
     if os.path.isfile(lock_file_path):
@@ -187,7 +187,7 @@ def mt5client():
 
 
 
-@app.route('/webhook', methods=['POST'])
+@app.route('/webhook', methods=['POST']) # type: ignore
 @cache.cached(timeout=3)
 def webhook():
     payload = request.data.decode("utf-8")
