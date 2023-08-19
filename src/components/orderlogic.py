@@ -21,7 +21,7 @@ from components.api_alpaca import api
 
 # Declaring some variables
 accountInfo = api.get_account()
-slippage = config.RISK_EXPOSURE + 1
+slippage = 1-(config.SLIPPAGE/100)
 
 
 # Check if our account is restricted from trading.

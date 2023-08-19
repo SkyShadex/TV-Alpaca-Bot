@@ -18,6 +18,7 @@ DISCORD_WEBBHOOK_ENABLED = True
 # Strategy Settings
 REWARD = 2 # Units made for every unit risked
 RISK = 1 # Unit risked
+SLIPPAGE = 0.2
 RISK_EXPOSURE = 0.005
 TAKEPROFIT_POSITION = 0.5
 DAYTRADE_ALLOW = True
