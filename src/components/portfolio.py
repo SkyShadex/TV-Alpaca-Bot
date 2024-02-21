@@ -11,11 +11,10 @@ headers = {
 }
 
 # Date range for the portfolio request
-end_date = datetime.today()
-start_date = datetime(2023, 5, 17)
+start_date = datetime(2023, 12, 1)
 
 
-def get_params(start_date, end_date):
+def get_params(start_date, end_date=datetime.today()):
     # Calculate the duration of the date range in days
     duration = (end_date - start_date).days
     print(duration)
@@ -41,7 +40,7 @@ def get_params(start_date, end_date):
     return params
 
 def request_portfolio_history():
-    params=get_params(start_date, end_date)
+    params=get_params(start_date)
     response = requests.get(
         base_url + endpoint,
         params,
@@ -72,11 +71,16 @@ def request_portfolio_history():
 def graph(plot_filename):
     portfolio_history = request_portfolio_history()
     # Extract the necessary data for plotting
-    timestamps = portfolio_history['timestamp']
-    equity = portfolio_history['equity']
-    profit_loss = portfolio_history['profit_loss']
-    profit_loss_pct = portfolio_history['profit_loss_pct']
     
+    # Filter out zero equity values
+    non_zero_indices = [i for i, value in enumerate(portfolio_history['equity']) if value != 0]
+    
+    # Extract the necessary data for plotting based on non-zero indices
+    timestamps = [portfolio_history['timestamp'][i] for i in non_zero_indices]
+    equity = [portfolio_history['equity'][i] for i in non_zero_indices]
+    profit_loss = [portfolio_history['profit_loss'][i] for i in non_zero_indices]
+    profit_loss_pct = [portfolio_history['profit_loss_pct'][i] for i in non_zero_indices]
+
     # Plot the equity
     plt.figure(figsize=(10, 6))
     plt.plot(timestamps, equity, label='Equity')
@@ -88,7 +92,7 @@ def graph(plot_filename):
 
     # Alternatively, skip every other label
     num_ticks = len(timestamps)
-    display_ticks = 20
+    display_ticks = 10
     plt.xticks(range(len(timestamps)), timestamps, rotation=60, fontsize=6)
     for i, label in enumerate(plt.gca().xaxis.get_ticklabels()):
         if i % (num_ticks // display_ticks) == 0:

@@ -1,14 +1,18 @@
 flask
 Flask-Caching
+flask_redis
+redis
 gunicorn
-alpaca-py == 0.8.2 
-requests
+#pyngrok
 ngrok
+requests
 python-dotenv
 matplotlib
-tradingview-screener
 pandas
 pytz
-#pyngrok
+numpy
+Cython
+alpaca-py == 0.8.2 
 #MetaTrader5
+#tradingview-screener
 #git+https://github.com/AI4Finance-Foundation/FinRL.git

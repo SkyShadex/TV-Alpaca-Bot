@@ -7,7 +7,7 @@ import components.techanalysis.ta_indicators as ta
 from threading import Lock
 from alpaca.data import StockBarsRequest, TimeFrame, TimeFrameUnit, StockHistoricalDataClient, BaseBarsRequest
 from datetime import datetime, timedelta
-from tradingview_screener import Scanner, Query, Column
+#from tradingview_screener import Scanner, Query, Column
 
 
 start_date = datetime(2022, 6, 1)

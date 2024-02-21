@@ -23,35 +23,32 @@ from components.api_alpaca import api
 accountInfo = api.get_account()
 slippage = 1-(config.SLIPPAGE/100)
 
-
 # Check if our account is restricted from trading.
 def tradingValid():
-    if accountInfo.trading_blocked:
+    if accountInfo.trading_blocked:  # type: ignore
         return 'Error: Account is currently restricted from trading.'
-    elif int(accountInfo.daytrade_count) > 3 and not config.DAYTRADE_ALLOW:
+    elif int(accountInfo.daytrade_count) > 3 and not config.DAYTRADE_ALLOW:  # type: ignore
         return 'Error: Approaching Day Trade Limit'
     else:
         return True
 
     
 def checkOpenOrder(ticker, side):
-    orderParams = GetOrdersRequest(status='all', limit=20, nested=False, symbols=[ticker])
+    orderParams = GetOrdersRequest(status='all', limit=20, nested=False, symbols=[ticker])  # type: ignore
     orders = api.get_orders(filter=orderParams)
     canceled_orders = []
     
     if orders:  # Check if there are any orders
         for order in orders:
-            if side == 'buy': #order.side == side and side == 'buy':
+            if side == 'buy' or order.status in [OrderStatus.CANCELED, OrderStatus.FILLED]: #order.side == side and side == 'buy':  # type: ignore
                 # Skip canceling the old buy order
-                continue
-            elif order.status in [OrderStatus.CANCELED, OrderStatus.FILLED]:
                 continue
             else:
                 try:
-                    api.cancel_order_by_id(order_id=order.id)
-                    canceled_orders.append(order.id)
+                    api.cancel_order_by_id(order_id=order.id)  # type: ignore
+                    canceled_orders.append(order.id)  # type: ignore
                 except Exception as e:
-                    print(f"Error canceling order {order.id}: {e}")
+                    print(f"Error canceling order {order.id}: {e}")  # type: ignore
         
         counter = len(canceled_orders)
         #response = f"Checked {counter} open order(s) for symbol {ticker}"
@@ -62,28 +59,26 @@ def checkOpenOrder(ticker, side):
     
     return canceled_orders
 
-    
-
 def checkAssetClass(ticker):
     asset = api.get_asset(ticker)
-    if asset.tradable:
-        return asset.asset_class
+    if asset.tradable: # type: ignore
+        return asset.asset_class  # type: ignore
     else:
         return None
 
-
-def calcQuantity(price):
+def calcQuantity(price):    
     if config.MARGIN_ALLOW == True:
-        buyingPower = float(accountInfo.regt_buying_power)
+        buyingPower = float(accountInfo.regt_buying_power)  # type: ignore
         #buyingPower = float(accountInfo.daytrading_buying_power)
     else:    
-        buyingPower = float(accountInfo.non_marginable_buying_power)
-    if float(accountInfo.long_market_value) < float(accountInfo.cash):    
+        buyingPower = float(accountInfo.non_marginable_buying_power)  # type: ignore
+        
+    if float(accountInfo.long_market_value) < float(accountInfo.cash):     # type: ignore
         quantity = (buyingPower * config.RISK_EXPOSURE) / price  # Position Size Based on Risk Exposure
     else:
-        quantity = (buyingPower * config.RISK_EXPOSURE/2) / price  # Position Size Based on Risk Exposure
+        quantity = (buyingPower * (config.RISK_EXPOSURE*0.5)) / price  # Position Size Based on Risk Exposure
+        
     return quantity
-
 
 def calcRR(price):
     stopLoss = round((((0.1*config.RISK) * price) - price)*-1, 2)
@@ -105,53 +100,57 @@ def extendedHoursCheck():
 def executeOrder(webhook_message):
     symbol_WH,side_WH,price_WH,quantity_WH,comment_WH,orderID_WH = vars.webhook(webhook_message)
     
-    #if not tradingValid():
-    #    return "Trade not valid"
-    
     checkOpenOrder(symbol_WH, side_WH)
       
     if side_WH == 'buy':
-        result = executeBuyOrder(symbol_WH, price_WH)
+        result = executeBuyOrder(symbol_WH, price_WH,orderID_WH)
     elif side_WH == 'sell':
             result = executeSellOrder(symbol_WH, orderID_WH)
-            #if orderID_WH != 'Tp':
-            #    time.sleep(3)
     else:
         result = "Invalid order side"
     return result
     
-def executeBuyOrder(symbol, price):
+def executeBuyOrder(symbol, price,orderID):
     checkCrypto = checkAssetClass(symbol)
     slippage_price = price * slippage
     quantity = calcQuantity(slippage_price)
-    client_order_id = f"skybot1_{random.randrange(100000000)}"
+    client_order_id = f"skybot1_{orderID}{random.randrange(100000000)}"
     if checkCrypto == AssetClass.CRYPTO:
-        if float(accountInfo.non_marginable_buying_power)*0.3 > 30000:
-            qtyrsk = (50000*0.26)/price
+        if True:
+            orderData = MarketOrderRequest(
+                symbol=symbol,
+                qty=round(quantity,2),
+                side='buy',
+                time_in_force='gtc',
+                client_order_id=client_order_id
+            )
         else:
-            qtyrsk = ((float(accountInfo.daytrading_buying_power)/2)*0.26)/price
-        orderData = MarketOrderRequest(
-            symbol=symbol,
-            qty=quantity*1.1,
-            side='buy',
-            time_in_force='gtc',
-            client_order_id=client_order_id
-        )
+            orderData = LimitOrderRequest(
+                    symbol=symbol,
+                    qty=quantity,
+                    side='buy',
+                    type='limit',
+                    time_in_force='day',
+                    limit_price=round(slippage_price,2),
+                    client_order_id=client_order_id
+                )
         response = f"Market Order, buy: {symbol}. {quantity} shares, 'gtc'."
     else:
+        extCheck = extendedHoursCheck()
         stopLoss, takeProfit = calcRR(price)
         take_profit = {"limit_price": takeProfit}
         stop_loss = {"stop_price": stopLoss}
-        if config.EXTENDTRADE_ALLOW and extendedHoursCheck(): 
+        quantity = round(max(quantity,1))
+        if config.EXTENDTRADE_ALLOW and extCheck: 
             print('Extended Hours!') 
             orderData = LimitOrderRequest(
                 symbol=symbol,
-                qty=round(quantity),
+                qty=quantity,
                 side='buy',
                 type='limit',
                 time_in_force='day',
                 limit_price=round(slippage_price,2),
-                extended_hours=str(extendedHoursCheck()),
+                extended_hours=str(extCheck),
                 take_profit=take_profit,
                 stop_loss=stop_loss,
                 client_order_id=client_order_id
@@ -159,7 +158,7 @@ def executeBuyOrder(symbol, price):
         else:   
             orderData = LimitOrderRequest(
                 symbol=symbol,
-                qty=round(quantity),
+                qty=quantity,
                 side='buy',
                 type='limit',
                 time_in_force='gtc',
@@ -175,8 +174,8 @@ def executeBuyOrder(symbol, price):
     return api.submit_order(orderData)
 
 def executeSellOrder(symbol, orderID):
-    if orderID == 'Tp':
-        close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION*100) 
+    if 'tp' in orderID and False:
+        close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION*100)
         return api.close_position(symbol, close_options=close_options)
     else:
         return api.close_position(symbol)

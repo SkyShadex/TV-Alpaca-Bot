@@ -12,6 +12,7 @@ def startMessage(margin, nomargin, DayTrade):
     print(
         'Your current PDT Count is: {}.'.format(DayTrade),
     )
+    
     print(
         '//======================== Welcome ============================//',
     )

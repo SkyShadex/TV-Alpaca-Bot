@@ -8,9 +8,13 @@ def webhook(webhook_message):
         quantity_WH = webhook_message['strategy']['order_contracts']
         comment_WH = webhook_message['strategy']['comment']
         orderID_WH = webhook_message['strategy']['order_id']
+        if webhook_message.get('strategyid'):
+            stratID_WH = webhook_message['strategyid']
+        else:
+            stratID_WH = "Missing ID"
         
 
-        return symbol_WH,side_WH,price_WH,quantity_WH,comment_WH,orderID_WH
+        return symbol_WH,side_WH,price_WH,quantity_WH,comment_WH,stratID_WH
 
 def portfolioData(portfolio_history):
     timestamps = portfolio_history['timestamp']
