@@ -4,31 +4,27 @@ import os
 import time
 import queue
 import threading
-from flask_redis import FlaskRedis
 import redis
-import gc
 from threading import Lock, Thread
 import tracemalloc
-import requests
-import random
 from alpaca.common import exceptions
 # import alpaca_trade_api as tradeapi
-from alpaca.trading.client import TradingClient
 from alpaca.trading.models import Order
 from alpaca.trading.requests import GetOrdersRequest
 from flask import (Flask, abort, jsonify, render_template,
                    render_template_string, request)
 from flask_caching import Cache
+from components.Clients.Alpaca import orderlogic, portfolio, portfolioManager
 
 
 import config
-from commons import start
-from components import discord, orderlogic, portfolio, vars
-from components.api_alpaca import api
-from components.RiskManager import backtest, port_rebal
-import components.Clients.mt5_server as mt5
+from commons import start, vars
+from components import discord
+from components.Clients.Alpaca.api_alpaca import api
+from components.RiskManager import backtest
+import components.Clients.MetaTrader.mt5_server as mt5
 from components.techanalysis import screener
-from components.RiskManager import DataAnalysis as da
+from components.Clients.Alpaca import DataAnalysis as da
 
 app = Flask(__name__)
 redis_client = redis.Redis(host='redis-stack-server', port=6379, decode_responses=True)
@@ -43,7 +39,7 @@ s = None
 
 # Start Up Message.
 start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count) # type: ignore
-port_rebal.alpaca_rebalance()
+portfolioManager.alpaca_rebalance()
 
 def check_alpaca_status():
     if not api.check_alpaca_status():
@@ -63,7 +59,7 @@ def check_alpaca_status():
 def fetch_orders():
     orderParams = GetOrdersRequest(status='all', limit=100, nested=True) # type: ignore
     orders = api.get_orders(filter=orderParams)
-    port_rebal.alpaca_rebalance()
+    portfolioManager.alpaca_rebalance()
     return orders
 
 
@@ -96,7 +92,6 @@ def portDisplay():
     portfolio_plot = 'portfolioperformance.png'
     asset_plot = 'assetperformance.png'
     portfolio.graph(plot_filename=portfolio_plot)
-    backtest.collectOrders()
     da.dataCrunch(plot_filename=asset_plot)
     return render_template('portfolio.html', portfolio_plot=portfolio_plot, asset_plot=asset_plot)
 
@@ -197,7 +192,7 @@ def webhook():
             response = "Request Buffered."
             return jsonify(response), 200
     else:
-        port_rebal.alpaca_rebalance()
+        portfolioManager.alpaca_rebalance()
 
     symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, stratID_WH = vars.webhook(
         webhook_message)

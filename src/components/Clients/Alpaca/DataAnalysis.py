@@ -1,11 +1,33 @@
 import pandas as pd
 import os, time
 import matplotlib.pyplot as plt
+from alpaca.trading.requests import GetOrdersRequest
+import time
+from commons import vars
+from components.Clients.Alpaca.api_alpaca import api
+import pandas as pd
 
+
+
+def collectOrders():
+    orderParams = GetOrdersRequest(status='closed', limit=500, nested=False) # type: ignore
+    orders = api.get_orders(filter=orderParams)
+    
+    df_data = [vars.extract_order_response(order) for order in orders if order.status.value == 'filled'] # type: ignore
+    df = pd.DataFrame(df_data)
+    print(df)
+    df.to_csv('logs/orders.csv', index=False)
+    return df
 
 def dataCrunch(plot_filename):
-    time.sleep(2)
-    df = pd.read_csv('/workspaces/TV-Alpaca-Bot/src/logs/orders.csv')
+    collectOrders()
+    csv_path = '/workspaces/TV-Alpaca-Bot/src/logs/orders.csv'
+
+        # Wait until the CSV file is done writing
+    while not os.path.exists(csv_path):
+        time.sleep(1)  # Adjust the sleep duration as needed
+    
+    df = pd.read_csv(csv_path)
 
     # Step 1: Calculate total amount for each row and add it to the dataframe
     df['amount'] = df['filled_qty'] * df['filled_avg_price']
@@ -34,8 +56,8 @@ def dataCrunch(plot_filename):
  
     # Create a DataFrame for closed positions
     closed_positions_df = pd.DataFrame(
-    closed_positions,
-    columns=['symbol', 'pnl', 'net_qty', 'total_sell_qty', 'total_buy_qty', 'total_sell_amount', 'total_buy_amount'])
+        closed_positions,
+        columns=['symbol', 'pnl', 'net_qty', 'total_sell_qty', 'total_buy_qty', 'total_sell_amount', 'total_buy_amount'])
     df_sorted = closed_positions_df.sort_values('pnl', ascending=False)
 
     # Step 5: Sort the DataFrame by pnl in descending order
