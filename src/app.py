@@ -14,7 +14,7 @@ from alpaca.trading.requests import GetOrdersRequest
 from flask import (Flask, abort, jsonify, render_template,
                    render_template_string, request)
 from flask_caching import Cache
-from components.Clients.Alpaca import orderlogic, portfolio, portfolioManager
+from components.Clients.Alpaca import executionManager, portfolio, portfolioManager
 
 
 import config
@@ -201,7 +201,7 @@ def webhook():
 
     with order_lock:
         try:
-            response = orderlogic.executeOrder(webhook_message)
+            response = executionManager.executeOrder(webhook_message)
 
             if isinstance(response, Order):
                 orderInfo = vars.extract_order_response(response)

@@ -5,9 +5,7 @@ import pytz
 from alpaca.trading.enums import (AssetClass, OrderStatus)
 from alpaca.trading.requests import (ClosePositionRequest, GetOrdersRequest,
                                      LimitOrderRequest, MarketOrderRequest)
-from flask import Flask, abort, render_template, request
 
-import app
 import config
 from commons import vars
 from components.Clients.Alpaca.api_alpaca import api
