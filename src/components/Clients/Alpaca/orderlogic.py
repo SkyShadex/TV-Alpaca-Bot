@@ -1,23 +1,16 @@
-import json
-import math
 import random
-import time
 import datetime
 import pytz
 
-import requests
-from alpaca.common import exceptions
-from alpaca.trading.client import TradingClient
-from alpaca.trading.enums import (AssetClass, OrderSide, OrderStatus,
-                                  TimeInForce)
+from alpaca.trading.enums import (AssetClass, OrderStatus)
 from alpaca.trading.requests import (ClosePositionRequest, GetOrdersRequest,
                                      LimitOrderRequest, MarketOrderRequest)
 from flask import Flask, abort, render_template, request
 
 import app
 import config
-from components import vars
-from components.api_alpaca import api
+from commons import vars
+from components.Clients.Alpaca.api_alpaca import api
 
 # Declaring some variables
 accountInfo = api.get_account()

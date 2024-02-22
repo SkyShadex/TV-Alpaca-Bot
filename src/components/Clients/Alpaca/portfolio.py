@@ -44,7 +44,7 @@ def request_portfolio_history():
     response = requests.get(
         base_url + endpoint,
         params,
-        headers=headers
+        headers=headers #type: ignore
     )
 
     if response.status_code == 200:

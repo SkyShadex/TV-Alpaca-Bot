@@ -3,7 +3,6 @@ from alpaca.trading import MarketOrderRequest, LimitOrderRequest, ClosePositionR
 from alpaca.trading.client import TradingClient
 from alpaca.common import exceptions
 import config, json, requests, math, random, app, ast, re
-import components.techanalysis.ta_indicators as ta
 from threading import Lock
 from alpaca.data import StockBarsRequest, TimeFrame, TimeFrameUnit, StockHistoricalDataClient, BaseBarsRequest
 from datetime import datetime, timedelta

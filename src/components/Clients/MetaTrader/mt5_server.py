@@ -1,5 +1,5 @@
 import datetime
-from components import vars
+from commons import vars
 
 orderHold = []
 def main(webhook_message):

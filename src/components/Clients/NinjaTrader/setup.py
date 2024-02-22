@@ -1,2 +1,1 @@
-from setuptools import Extension, setup
-from Cython.Build import cythonize
+from pythonnet import clr_loader as clr

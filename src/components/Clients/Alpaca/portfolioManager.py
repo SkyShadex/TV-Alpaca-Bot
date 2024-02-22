@@ -1,6 +1,4 @@
-from components.api_alpaca import api as alpaca
-from components.api_alpaca import api
-from alpaca.trading.client import TradingClient
+from components.Clients.Alpaca.api_alpaca import api
 from datetime import date
 import math
 import config
@@ -8,13 +6,13 @@ import config
 # Declaring some variables
 accountInfo = api.get_account()
 highest_equity_date = date.today()  # Initialize with the current date
-highest_equity = float(accountInfo.last_equity)  # Initialize with current equity
+highest_equity = float(accountInfo.last_equity)   # Initialize with current equity # type: ignore
 
 
 def alpaca_rebalance():
     global highest_equity_date  # Declare the variable as global
     global highest_equity  # Declare the variable as global
-    current_equity = float(accountInfo.equity)
+    current_equity = float(accountInfo.equity) # type: ignore
     portfolio_pnl = math.log(current_equity / highest_equity)
     goal = config.PORTFOLIO_REBAL / 100
 

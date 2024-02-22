@@ -3,7 +3,7 @@ Flask-Caching
 flask_redis
 redis
 gunicorn
-#pyngrok
+pyngrok
 ngrok
 requests
 python-dotenv
@@ -11,7 +11,7 @@ matplotlib
 pandas
 pytz
 numpy
-Cython
+pythonnet
 alpaca-py == 0.8.2 
 #MetaTrader5
 #tradingview-screener
