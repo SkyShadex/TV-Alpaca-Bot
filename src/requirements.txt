@@ -13,6 +13,10 @@ pytz
 numpy
 pythonnet
 alpaca-py == 0.8.2 
+fastdtw
+seaborn
+scipy
+pykalman
 #MetaTrader5
 #tradingview-screener
 #git+https://github.com/AI4Finance-Foundation/FinRL.git
