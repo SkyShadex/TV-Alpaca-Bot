@@ -30,9 +30,9 @@ def extract_order_response(response):
         response_dict = {
             'id': str(response.id),
             'client_order_id': response.client_order_id,
-            'created_at': response.created_at.strftime('%m-%d-%Y, %H:%M:%S'),
-            'updated_at': response.updated_at.strftime('%m-%d-%Y, %H:%M:%S'),
-            'submitted_at': response.submitted_at.strftime('%m-%d-%Y, %H:%M:%S'),
+            'created_at': format_timestamp(response.created_at),
+            'updated_at': format_timestamp(response.updated_at),
+            'submitted_at': format_timestamp(response.submitted_at),
             'filled_at': response.filled_at,
             'expired_at': response.expired_at,
             'canceled_at': response.canceled_at,
@@ -102,3 +102,6 @@ def extract_order_response(response):
         return response_dict
     else:
         raise ValueError("Invalid response object. Expected an instance of Order.")
+    
+def format_timestamp(timestamp):
+    return timestamp.strftime('%m-%d-%Y, %H:%M:%S') if timestamp else None
