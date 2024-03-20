@@ -9,6 +9,7 @@ from alpaca.trading.requests import (ClosePositionRequest, GetOrdersRequest,
 import config
 from commons import vars
 from components.Clients.Alpaca.api_alpaca import api
+from components.Clients.Alpaca.portfolioManager import alpaca_rebalance
 
 # Declaring some variables
 accountInfo = api.get_account()
@@ -195,6 +196,7 @@ def executeSellOrder(symbol, orderID):
         close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION*100)
         return api.close_position(symbol, close_options=close_options)
     else:
+        alpaca_rebalance()
         return api.close_position(symbol)
 
 
