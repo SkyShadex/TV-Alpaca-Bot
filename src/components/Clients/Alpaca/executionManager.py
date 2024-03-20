@@ -66,8 +66,8 @@ def calcQuantity(price):
         
     if float(accountInfo.long_market_value) < float(accountInfo.cash):     # type: ignore
         quantity = (buyingPower * config.RISK_EXPOSURE) / price  # Position Size Based on Risk Exposure
-    else:
-        quantity = (buyingPower * (config.RISK_EXPOSURE*0.5)) / price  # Position Size Based on Risk Exposure
+    # else:
+    #     quantity = (buyingPower * (config.RISK_EXPOSURE*0.5)) / price  # Position Size Based on Risk Exposure
         
     return quantity
 
@@ -102,6 +102,7 @@ def executeOrder(webhook_message):
     return result
     
 def executeBuyOrder(symbol, price,orderID):
+    isMarketOrder = False
     checkCrypto = checkAssetClass(symbol)
     slippage_price = price * slippage
     quantity = calcQuantity(slippage_price)
@@ -131,34 +132,59 @@ def executeBuyOrder(symbol, price,orderID):
         stopLoss, takeProfit = calcRR(price)
         take_profit = {"limit_price": takeProfit}
         stop_loss = {"stop_price": stopLoss}
-        quantity = round(max(quantity,1))
+        # if quantity == 0:
+        #     quantity = 1
         if config.EXTENDTRADE_ALLOW and extCheck: 
-            print('Extended Hours!') 
-            orderData = LimitOrderRequest(
-                symbol=symbol,
-                qty=quantity,
-                side='buy',
-                type='limit',
-                time_in_force='day',
-                limit_price=round(slippage_price,2),
-                extended_hours=str(extCheck),
-                take_profit=take_profit,
-                stop_loss=stop_loss,
-                client_order_id=client_order_id
-            )
-        else:   
-            orderData = LimitOrderRequest(
-                symbol=symbol,
-                qty=quantity,
-                side='buy',
-                type='limit',
-                time_in_force='gtc',
-                limit_price=round(slippage_price,2),
-                order_class='bracket',
-                take_profit=take_profit,
-                stop_loss=stop_loss,
-                client_order_id=client_order_id
-            )
+            print('Extended Hours!')
+            if not isMarketOrder: 
+                orderData = LimitOrderRequest(
+                    symbol=symbol,
+                    qty=round(quantity,9),
+                    side='buy',
+                    type='limit',
+                    time_in_force='day',
+                    limit_price=round(slippage_price,2),
+                    extended_hours=str(extCheck),
+                    take_profit=take_profit,
+                    stop_loss=stop_loss,
+                    client_order_id=client_order_id
+                )
+            else:    
+                orderData = MarketOrderRequest(
+                    symbol=symbol,
+                    qty=round(quantity,9),
+                    side='buy',
+                    time_in_force='day',
+                    extended_hours=str(extCheck),
+                    # take_profit=take_profit,
+                    # stop_loss=stop_loss,
+                    client_order_id=client_order_id
+                )
+        else:
+            if not isMarketOrder: 
+                orderData = LimitOrderRequest(
+                    symbol=symbol,
+                    qty=round(quantity,9),
+                    side='buy',
+                    type='limit',
+                    time_in_force='day',
+                    limit_price=round(slippage_price,2),
+                    # order_class='bracket',
+                    # take_profit=take_profit,
+                    # stop_loss=stop_loss,
+                    client_order_id=client_order_id
+                )
+            else:    
+                orderData = MarketOrderRequest(
+                    symbol=symbol,
+                    qty=round(quantity,9),
+                    side='buy',
+                    time_in_force='day',
+                    # order_class='bracket',
+                    # take_profit=take_profit,
+                    # stop_loss=stop_loss,
+                    client_order_id=client_order_id
+                )   
         response = f"Limit Order, buy: {symbol} @ {slippage_price}. {round(quantity)} shares, 'gtc'."
     
     print(response)
