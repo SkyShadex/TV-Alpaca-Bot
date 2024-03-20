@@ -128,5 +128,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 src/static/portfolioperformance.png
+src/static/assetperformance.png
 src/logs/data.txt
 src/logs/orders.csv
+src/components/Clients/Alpaca/StatArb/
