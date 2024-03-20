@@ -21,7 +21,6 @@ import config
 from commons import start, vars
 from components import discord
 from components.Clients.Alpaca.api_alpaca import api
-from components.RiskManager import backtest
 import components.Clients.MetaTrader.mt5_server as mt5
 from components.techanalysis import screener
 from components.Clients.Alpaca import DataAnalysis as da
@@ -39,7 +38,7 @@ s = None
 
 # Start Up Message.
 start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count) # type: ignore
-portfolioManager.alpaca_rebalance()
+
 
 def check_alpaca_status():
     if not api.check_alpaca_status():
