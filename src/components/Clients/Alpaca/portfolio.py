@@ -36,7 +36,7 @@ def get_params(start_date, end_date=datetime.today()):
         'period': periodPD,
         'timeframe': unitPD
     }
-    print(params)
+    # print(params)
     return params
 
 def request_portfolio_history():
