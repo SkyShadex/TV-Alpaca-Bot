@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, abort, jsonify
 from alpaca.trading import MarketOrderRequest, LimitOrderRequest, ClosePositionRequest, GetOrdersRequest, OrderSide, TimeInForce, AssetClass
 from alpaca.trading.client import TradingClient
 from alpaca.common import exceptions
-import config, json, requests, math, random, app, ast, re
+import config, json, requests, math, random, main, ast, re
 from threading import Lock
 from alpaca.data import StockBarsRequest, TimeFrame, TimeFrameUnit, StockHistoricalDataClient, BaseBarsRequest
 from datetime import datetime, timedelta
