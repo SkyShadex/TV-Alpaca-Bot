@@ -1,6 +1,8 @@
 import requests, config, os
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
+import pandas as pd
+from alpaca.trading.models import Position, Order
 
 # Set Alpaca Trading API
 base_url = 'https://paper-api.alpaca.markets'
@@ -13,6 +15,87 @@ headers = {
 # Date range for the portfolio request
 start_date = datetime(2023, 12, 1)
 
+def parse_positions(positions,commissions=0.5*2*3):
+    formatted_data = []
+    for position in positions:
+        data = {
+            'asset_id': position.asset_id,
+            'asset_class' : position.asset_class,
+            'symbol': position.symbol,
+            'qty': position.qty,
+            'side': position.side,
+            'market_value': position.market_value,
+            'cost_basis': position.cost_basis,
+            'unrealized_pl': position.unrealized_pl,
+            'unrealized_plpc': position.unrealized_plpc,
+            'unrealized_intraday_pl': position.unrealized_intraday_pl,
+            'unrealized_intraday_plpc': position.unrealized_intraday_plpc,
+            'current_price': position.current_price,
+            'lastday_price': position.lastday_price,
+            'change_today': position.change_today,
+            'swap_rate': position.swap_rate,
+            'avg_entry_swap_rate': position.avg_entry_swap_rate,
+            'usd': position.usd,
+            'qty_available': position.qty_available
+        }
+        formatted_data.append(data)
+
+    posdf = pd.DataFrame(formatted_data)
+    numeric_cols = ['qty', 'market_value', 'cost_basis', 'unrealized_pl', 
+                    'unrealized_plpc', 'unrealized_intraday_pl', 
+                    'unrealized_intraday_plpc', 'current_price', 
+                    'lastday_price', 'change_today', 'qty_available']
+    posdf[numeric_cols] = posdf[numeric_cols].apply(pd.to_numeric, errors='coerce')
+    posdf['symbol'] = posdf['symbol'].astype(str)
+    posdf['side'] = posdf['side'].astype(str)
+    posdf['breakeven'] = ((posdf['cost_basis']/posdf['qty'])+commissions)*posdf['qty']
+    posdf['breakeven_per_unit'] = (posdf.breakeven/(100*posdf.qty))
+    posdf['cost_per_unit'] = (posdf['cost_basis']/posdf['qty'])/100
+    posdf.sort_values('unrealized_plpc',ascending=False,inplace=True)
+    return posdf
+
+def parse_orders(orders):
+    formatted_order = []
+    for order in orders:
+        data = {
+            'id': order.id,
+            # 'client_order_id': order.client_order_id,
+            # 'created_at': order.created_at,
+            # 'updated_at': order.updated_at,
+            'submitted_at': order.submitted_at,
+            'filled_at': order.filled_at,
+            'expired_at': order.expired_at,
+            'canceled_at': order.canceled_at,
+            'failed_at': order.failed_at,
+            # 'replaced_at': order.replaced_at,
+            # 'replaced_by': order.replaced_by,
+            # 'replaces': order.replaces,
+            # 'asset_id': order.asset_id,
+            'symbol': order.symbol,
+            'qty': order.qty,
+            'filled_qty': order.filled_qty,
+            'filled_avg_price': order.filled_avg_price,
+            'order_class': order.order_class,
+            'order_type': order.order_type,
+            'side': order.side,
+            'time_in_force': order.time_in_force,
+            'limit_price': order.limit_price,
+            # 'stop_price': order.stop_price,
+            'status': order.status,
+            'extended_hours': order.extended_hours,
+            # 'legs': order.legs,
+            # 'trail_percent': order.trail_percent,
+            # 'trail_price': order.trail_price,
+            # 'hwm': order.hwm
+            # Add other attributes as needed
+        }
+        formatted_order.append(data)
+    if orders:
+        order_df = pd.DataFrame(formatted_order)
+        order_df.id = order_df.id.astype(str)
+        order_df.symbol = order_df.symbol.astype(str)
+        order_df.status = order_df.status.astype(str)
+        return order_df
 
 def get_params(start_date, end_date=datetime.today()):
     # Calculate the duration of the date range in days
