@@ -2,6 +2,8 @@ flask
 Flask-Caching
 flask_redis
 redis
+Flask-APScheduler
+schedule
 gunicorn
 pyngrok
 ngrok
@@ -12,11 +14,13 @@ pandas
 pytz
 numpy
 pythonnet
-alpaca-py == 0.8.2 
+alpaca-py == 0.20.1
 fastdtw
 seaborn
 scipy
+scikit-learn
 pykalman
+arch
 #MetaTrader5
 #tradingview-screener
 #git+https://github.com/AI4Finance-Foundation/FinRL.git
