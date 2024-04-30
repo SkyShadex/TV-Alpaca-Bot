@@ -1,7 +1,7 @@
 import random
 import datetime
 import pytz
-
+import math
 from alpaca.trading.enums import (AssetClass, OrderStatus)
 from alpaca.trading.requests import (ClosePositionRequest, GetOrdersRequest,
                                      LimitOrderRequest, MarketOrderRequest)
@@ -9,7 +9,7 @@ from alpaca.trading.requests import (ClosePositionRequest, GetOrdersRequest,
 import config
 from commons import vars
 from components.Clients.Alpaca.api_alpaca import api
-from components.Clients.Alpaca.portfolioManager import alpaca_rebalance
+
 
 # Declaring some variables
 accountInfo = api.get_account()
@@ -26,14 +26,12 @@ def tradingValid():
 
     
 def checkOpenOrder(ticker, side):
-    orderParams = GetOrdersRequest(status='all', limit=20, nested=False, symbols=[ticker])  # type: ignore
+    orderParams = GetOrdersRequest(status='open', limit=20, nested=False, symbols=[ticker])  # type: ignore
     orders = api.get_orders(filter=orderParams)
-    canceled_orders = []
-    
+    canceled_orders = []    
     if orders:  # Check if there are any orders
         for order in orders:
             if side == 'buy' or order.status in [OrderStatus.CANCELED, OrderStatus.FILLED]: #order.side == side and side == 'buy':  # type: ignore
-                # Skip canceling the old buy order
                 continue
             else:
                 try:
@@ -42,13 +40,7 @@ def checkOpenOrder(ticker, side):
                 except Exception as e:
                     print(f"Error canceling order {order.id}: {e}")  # type: ignore
         
-        counter = len(canceled_orders)
-        #response = f"Checked {counter} open order(s) for symbol {ticker}"
-        #print(response)
-    #else:
-        #response = f"No open orders found for symbol {ticker}"
-        #print(response)
-    
+        # counter = len(canceled_orders)
     return canceled_orders
 
 def checkAssetClass(ticker):
@@ -58,18 +50,22 @@ def checkAssetClass(ticker):
     else:
         return None
 
-def calcQuantity(price):    
+def calcQuantity(ticker,price,weight=1.0): 
+    accountInfo = api.get_account()   
     if config.MARGIN_ALLOW == True:
         buyingPower = float(accountInfo.regt_buying_power)  # type: ignore
         #buyingPower = float(accountInfo.daytrading_buying_power)
     else:    
         buyingPower = float(accountInfo.non_marginable_buying_power)  # type: ignore
-        
-    if float(accountInfo.long_market_value) < float(accountInfo.cash):     # type: ignore
-        quantity = (buyingPower * config.RISK_EXPOSURE) / price  # Position Size Based on Risk Exposure
-    # else:
-    #     quantity = (buyingPower * (config.RISK_EXPOSURE*0.5)) / price  # Position Size Based on Risk Exposure
-        
+    # position_market_value = (float(accountInfo.long_market_value)+(float(accountInfo.short_market_value)*-1)) #type: ignore
+    # # if position_market_value > float(accountInfo.regt_buying_power): #type: ignore
+    # #     buyingPower = buyingPower*(float(accountInfo.regt_buying_power)/buyingPower)
+
+    quantity = max((buyingPower * config.RISK_EXPOSURE * weight),1) / price  # Position Size Based on Risk Exposure  
+
+    if quantity == 0.0:
+        return 1.0
+    
     return quantity
 
 def calcRR(price):
@@ -91,59 +87,63 @@ def extendedHoursCheck():
 # ============================== Execution Logic =================================
 def executeOrder(webhook_message):
     symbol_WH,side_WH,price_WH,quantity_WH,comment_WH,orderID_WH = vars.webhook(webhook_message)
-    
+
     checkOpenOrder(symbol_WH, side_WH)
       
     if side_WH == 'buy':
-        result = executeBuyOrder(symbol_WH, price_WH,orderID_WH)
+        result = entryOrder(symbol_WH,price_WH,orderID_WH)
     elif side_WH == 'sell':
-            result = executeSellOrder(symbol_WH, orderID_WH)
+        result = exitOrder(symbol_WH,orderID=orderID_WH)
     else:
         result = "Invalid order side"
     return result
     
-def executeBuyOrder(symbol, price,orderID):
-    isMarketOrder = False
+def entryOrder(symbol,price,orderID,side='buy',isMarketOrder=False,weight=1.0):
+    if price == 0:
+        print(f'price error: {symbol},{price},{side},{orderID}')
+        return
     checkCrypto = checkAssetClass(symbol)
     slippage_price = price * slippage
-    quantity = calcQuantity(slippage_price)
+    quantity = calcQuantity(symbol,slippage_price,weight)
     client_order_id = f"skybot1_{orderID}{random.randrange(100000000)}"
+    tif = 'day'
     if checkCrypto == AssetClass.CRYPTO:
-        if True:
-            orderData = MarketOrderRequest(
-                symbol=symbol,
-                qty=round(quantity,2),
-                side='buy',
-                time_in_force='gtc',
-                client_order_id=client_order_id
-            )
-        else:
-            orderData = LimitOrderRequest(
-                    symbol=symbol,
-                    qty=quantity,
-                    side='buy',
-                    type='limit',
-                    time_in_force='day',
-                    limit_price=round(slippage_price,2),
-                    client_order_id=client_order_id
-                )
-        response = f"Market Order, buy: {symbol}. {quantity} shares, 'gtc'."
+        orderData = MarketOrderRequest(
+            symbol=symbol,
+            qty=round(quantity,2),
+            side=side,
+            time_in_force=tif,
+            client_order_id=client_order_id
+        )
+        # else:
+        #     orderData = LimitOrderRequest(
+        #             symbol=symbol,
+        #             qty=quantity,
+        #             side=side,
+        #             type='limit',
+        #             time_in_force='day',
+        #             limit_price=round(slippage_price,2),
+        #             client_order_id=client_order_id
+        #         )
+        response = f"Market Order, {side}: {symbol}. {quantity:.2f} shares, {tif}."
     else:
+        if side == 'sell':
+            quantity = max(int(quantity),1)
+        else:
+            quantity = round(quantity,9)
         extCheck = extendedHoursCheck()
         stopLoss, takeProfit = calcRR(price)
         take_profit = {"limit_price": takeProfit}
         stop_loss = {"stop_price": stopLoss}
-        # if quantity == 0:
-        #     quantity = 1
+        tif = 'day'
         if config.EXTENDTRADE_ALLOW and extCheck: 
-            print('Extended Hours!')
             if not isMarketOrder: 
                 orderData = LimitOrderRequest(
                     symbol=symbol,
-                    qty=round(quantity,9),
-                    side='buy',
+                    qty=quantity,
+                    side=side,
                     type='limit',
-                    time_in_force='day',
+                    time_in_force=tif,
                     limit_price=round(slippage_price,2),
                     extended_hours=str(extCheck),
                     take_profit=take_profit,
@@ -153,9 +153,9 @@ def executeBuyOrder(symbol, price,orderID):
             else:    
                 orderData = MarketOrderRequest(
                     symbol=symbol,
-                    qty=round(quantity,9),
-                    side='buy',
-                    time_in_force='day',
+                    qty=quantity,
+                    side=side,
+                    time_in_force=tif,
                     extended_hours=str(extCheck),
                     # take_profit=take_profit,
                     # stop_loss=stop_loss,
@@ -165,10 +165,10 @@ def executeBuyOrder(symbol, price,orderID):
             if not isMarketOrder: 
                 orderData = LimitOrderRequest(
                     symbol=symbol,
-                    qty=round(quantity,9),
-                    side='buy',
+                    qty=quantity,
+                    side=side,
                     type='limit',
-                    time_in_force='day',
+                    time_in_force=tif,
                     limit_price=round(slippage_price,2),
                     # order_class='bracket',
                     # take_profit=take_profit,
@@ -178,25 +178,117 @@ def executeBuyOrder(symbol, price,orderID):
             else:    
                 orderData = MarketOrderRequest(
                     symbol=symbol,
-                    qty=round(quantity,9),
-                    side='buy',
-                    time_in_force='day',
+                    qty=quantity,
+                    side=side,
+                    time_in_force=tif,
                     # order_class='bracket',
                     # take_profit=take_profit,
                     # stop_loss=stop_loss,
                     client_order_id=client_order_id
                 )   
-        response = f"Limit Order, buy: {symbol} @ {slippage_price}. {round(quantity)} shares, 'gtc'."
+        response = f"Order {side}: {symbol} @ {slippage_price}. {quantity:.2f} shares, {tif}."
     
     print(response)
-    return api.submit_order(orderData)
+    res = api.submit_order(orderData)
+    return res
 
-def executeSellOrder(symbol, orderID):
-    if 'tp' in orderID and False:
-        close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION*100)
-        return api.close_position(symbol, close_options=close_options)
+def exitOrder(symbol,client=api.client['DEV'], orderID="",live=False):
+    # if 'tp' in orderID and False:
+    #     close_options = ClosePositionRequest(percentage=config.TAKEPROFIT_POSITION*100)
+    #     return api.close_position(symbol, close_options=close_options)
+    # else:
+    res = client.close_position(symbol)
+    return res
+
+def optionsOrder(symbol,price,client=api.client['DEV'],orderID="",side='buy',quantity=1,isMarketOrder=False,weight=1.0,tif='day',bet=100.0):
+    if isMarketOrder:
+        orderData = MarketOrderRequest(
+            symbol=symbol,
+            qty=quantity,
+            side=side,
+            time_in_force=tif,
+        )
     else:
-        alpaca_rebalance()
-        return api.close_position(symbol)
+        qty = min(max(math.floor(bet / (100*price)),1),5)  
+        if side == 'sell': 
+            qty = quantity
+        orderData = LimitOrderRequest(
+                        symbol=symbol,
+                        qty=qty,
+                        side=side,
+                        type='limit',
+                        time_in_force=tif,
+                        limit_price=round(price,2)
+                    ) 
+    print(f"Order {side}: {orderID} @ {price:.3f}. {qty:.2f} contracts, '{tif}'.")
+    return client.submit_order(orderData)
 
 
+
+# //--------------------- PROD ENV ---------------------------------//
+
+def entryOrderProd(symbol,price,orderID,side='buy',isMarketOrder=False,weight=1.0):
+    client = api.client['LIVE']
+    if price == 0:
+        print(f'[PROD]: price error: {symbol},{price},{side},{orderID}')
+        return
+    
+    asset = client.get_asset(symbol)
+
+    if not asset:
+        print(f'[PROD]: DNE: {symbol},{price},{side},{orderID}')
+        return
+    
+    if not asset.tradable:
+        return
+    
+    # slippage_price = price * slippage
+    acct_info_prod = client.get_account() 
+    # print(acct_info_prod.regt_buying_power)
+    buyingpower = float(acct_info_prod.regt_buying_power)
+    # print(buyingpower)
+
+    quantity = max((buyingpower * config.RISK_EXPOSURE * weight),1.1) / price
+
+    if quantity == 0.0:
+        quantity = 1.0 
+
+    client_order_id = f"skybot1_prod{orderID}{random.randrange(100000000)}"
+    if asset.asset_class == AssetClass.CRYPTO:
+        orderData = MarketOrderRequest(
+            symbol=symbol,
+            qty=round(quantity,2),
+            side=side,
+            time_in_force='day',
+            client_order_id=client_order_id
+        )
+        response = f"Market Order, {side}: {symbol}. {quantity} shares."
+    else:
+        if side == 'sell':
+            quantity = max(int(quantity),1)
+        else:
+            quantity = round(quantity,9)
+
+        extCheck = extendedHoursCheck()
+        tif = 'day'
+        if config.EXTENDTRADE_ALLOW and extCheck:    
+            orderData = MarketOrderRequest(
+                symbol=symbol,
+                qty=quantity,
+                side=side,
+                time_in_force=tif,
+                extended_hours=str(extCheck),
+                client_order_id=client_order_id
+            )
+        else:   
+            orderData = MarketOrderRequest(
+                symbol=symbol,
+                qty=quantity,
+                side=side,
+                time_in_force=tif,
+                client_order_id=client_order_id
+            )   
+        response = f"Order {side}: {symbol} @ {price}. {quantity:.2f} shares, {tif}."
+    print("[PROD]: ",response)
+    res = client.submit_order(orderData)
+    return res
