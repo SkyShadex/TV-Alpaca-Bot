@@ -181,7 +181,7 @@ def reversalDCA(client=api.client['DEV'],exposure_Target=0.05):
     exposure_Ratio = exposure_Current / exposure_Target
 
     if not(exposure_Ratio <= 1.25): #only checking if excess cash to deploy
-        damper = 1/5
+        damper = 1/2
         adjustment_factor = abs((1 / exposure_Ratio)-1)*damper if exposure_Ratio > 1 else abs(exposure_Ratio-1)*damper
         for index, position in pos.iterrows():
             if "option" in position['asset_class']:

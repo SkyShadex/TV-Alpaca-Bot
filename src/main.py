@@ -38,7 +38,7 @@ from flask_apscheduler import APScheduler
 
 
 app = Flask(__name__)
-
+logging.basicConfig(level=logging.INFO, filename="py_log.log",filemode="w",format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
 redis_client = redis.Redis(host='redis-stack-server', port=6379, decode_responses=True)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
@@ -101,22 +101,18 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
             scheduler.add_job(id='init_stocks_1', func=run_strat)
         scheduler.add_job(id='run_strategy_job_1', func=run_strat, trigger='interval', minutes=25, start_date='2024-03-25 08:05:00', max_instances=2)
         scheduler.add_job(id='run_stocks_job_close', func=run_strat, trigger='cron', day_of_week='mon-fri', hour=19, minute=50, misfire_grace_time = None)
-        
-manageSchedules(TradingHours=False,OrderReset=False,equities=True,options=True,portfolio=True,onInit=True)    
 
-manager_scheduler.init_app(app)
-manager_scheduler.start()
-scheduler.init_app(app)
-scheduler.start()
+    manager_scheduler.init_app(app)
+    manager_scheduler.start()
+    scheduler.init_app(app)
+    scheduler.start()
 
-
-def pauseScheduleDebug():
     current_time = dt.datetime.now(timezone('US/Eastern')).time()
     if dt.time(18, 0) <= current_time or current_time <= dt.time(3, 0):
         print(f"pause trade operations... {scheduler.state}")
-        # print(f"{scheduler.state} {manager_scheduler.state}")
         scheduler.pause()
-# pauseScheduleDebug()       
+        
+manageSchedules(TradingHours=False,OrderReset=False,equities=True,options=True,portfolio=True,onInit=True)    
 
 
 # Start Up Message.
@@ -125,6 +121,7 @@ start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_p
 
 def check_alpaca_status():
     if not api.check_alpaca_status():
+        # logging.warning(jsonify({"error": "Alpaca API is currently unavailable"}), 503)
         return jsonify({"error": "Alpaca API is currently unavailable"}), 503
 
 # Making the dashboard dynamic
@@ -243,7 +240,7 @@ def orderResults(webhook_message,side_WH):
             orderInfo = vars.extract_order_response(response)
             content = f"Alpaca: Order executed successfully -|- {orderInfo['qty']} units of {orderInfo['symbol']} -|- Timestamp: {orderInfo['submitted_at']}"
             discord.message(content)
-            print(content)
+            logging.info(content)
             return jsonify(message='Order executed successfully!', orderInfo=orderInfo)
 
     # Error Handling
