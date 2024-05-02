@@ -1,18 +1,3 @@
 
 def startMessage(margin, nomargin, DayTrade):
-    print(
-        '//======================== Welcome ============================//',
-    )
-    print(
-        '${} is available as margin buying power.'.format(margin),
-    )
-    print(
-        '${} is available as non-margin buying power.'.format(nomargin),
-    )
-    print(
-        'Your current PDT Count is: {}.'.format(DayTrade),
-    )
-    
-    print(
-        '//======================== Welcome ============================//',
-    )
+    print(f'//======================== Welcome ============================//\n${margin} is available as margin buying power.\n${nomargin} is available as non-margin buying power.\nYour current PDT Count is: {DayTrade}.\n')
