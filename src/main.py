@@ -60,17 +60,17 @@ def run_strat():
 
 warnings.simplefilter('ignore', np.RankWarning)
 def run_opt():
+    current_time = dt.datetime.now(timezone('US/Eastern')).time()
+    if dt.time(18, 0) <= current_time or current_time <= dt.time(10,30):
+        print('morning blockout for options')
+        return
     opt = StrategyManager("TSMOM_O")
-    # current_time = dt.datetime.now(timezone('US/Eastern')).time()
-    # if dt.time(18, 0) <= current_time or current_time <= dt.time(10,30):
-    #     print('morning blockout for options')
-    #     return
     # opt = StrategyManager("OOI")
 
 
 def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
     if TradingHours:
-        manager_scheduler.add_job(id='bod', func=scheduler.resume, trigger='cron', day_of_week='mon-fri', hour=22-6-6-2, minute=0, misfire_grace_time = None)
+        manager_scheduler.add_job(id='bod', func=scheduler.resume, trigger='cron', day_of_week='mon-fri', hour=8, minute=0, misfire_grace_time = None)
         manager_scheduler.add_job(id='bod2', func=print, trigger='cron', day_of_week='mon-fri', hour=8, minute=0, args=[f"resume trade operations... {scheduler.state}"],misfire_grace_time = None)
         manager_scheduler.add_job(id='eod', func=scheduler.pause, trigger='cron', day_of_week='mon-fri', hour=22, minute=0,misfire_grace_time = None)
         manager_scheduler.add_job(id='eod2', func=print, trigger='cron', day_of_week='mon-fri', hour=22, minute=0, args=[f"pause trade operations... {scheduler.state}"],misfire_grace_time = None)
@@ -85,8 +85,8 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
     if portfolio:
         if onInit:
             scheduler.add_job(id='init_managePNL', func=managePNL)
-        scheduler.add_job(id='portfolio_job_1', func=managePNL, trigger='interval', hours=2, start_date='2024-03-25 08:05:00')
-        scheduler.add_job(id='rebalance_dev', func=reversalDCA, trigger='cron', day_of_week='mon-fri', hour=19, misfire_grace_time = None)
+        scheduler.add_job(id='portfolio_job_1', func=managePNL, trigger='interval', minutes=30, start_date='2024-03-25 08:05:00')
+        scheduler.add_job(id='rebalance_dev', func=reversalDCA, trigger='cron', day_of_week='mon-fri', hour=13, minute=31, misfire_grace_time = None)
         scheduler.add_job(id='rebalance_prod', func=reversalDCA, args=[api.prod], trigger='cron', day_of_week='mon-fri', hour=19, misfire_grace_time = None)
         # scheduler.add_job(id='rebalance_job_1', func=alpaca_rebalance, trigger='interval', minutes=1, start_date='2024-03-25 08:05:00')
 
@@ -110,14 +110,12 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
     current_time = dt.datetime.now(timezone('US/Eastern')).time()
     if dt.time(18, 0) <= current_time or current_time <= dt.time(3, 0):
         print(f"pause trade operations... {scheduler.state}")
-        scheduler.pause()
-        
-manageSchedules(TradingHours=False,OrderReset=False,equities=True,options=True,portfolio=True,onInit=True)    
-
+        scheduler.pause()    
 
 # Start Up Message.
 start.startMessage(api.prod.get_account().buying_power, api.prod.get_account().non_marginable_buying_power, api.prod.get_account().daytrade_count) # type: ignore
 start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count)
+manageSchedules(TradingHours=True,OrderReset=False,equities=True,options=True,portfolio=True,onInit=True)    
 
 def check_alpaca_status():
     if not api.check_alpaca_status():
@@ -213,7 +211,6 @@ def process_post_requests():
 
 # Start the background process for processing POST requests
 post_thread = Thread(target=process_post_requests)
-post_thread.start()
 
 def get_file_content():
     with open(file_path, 'r') as file:
@@ -289,3 +286,4 @@ def webhook():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
+    post_thread.start()

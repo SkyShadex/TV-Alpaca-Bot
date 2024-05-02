@@ -154,10 +154,10 @@ def checkPrices(row):
     model_spread_current = np.log(row.current_price/modeled_price)
     target_spread = np.abs(opm.target_spread)/2
     badDelta = np.abs(delta) < 0.4
-    marketOrder = (model_spread_entry > target_spread and model_spread_current > target_spread)
+    pnl = abs(float(row.unrealized_plpc)) > 0.8
+    marketOrder = (model_spread_entry > target_spread and model_spread_current > target_spread) or badDelta or pnl
     limitOrder = model_spread_entry < -target_spread and model_spread_current < -target_spread
-    pnl = not(-0.8 < float(row.unrealized_plpc) < 0.8)
-    sell = badDelta or marketOrder or limitOrder or pnl
+    sell = marketOrder or limitOrder
     
     if sell:
         print(f"{row.symbol} Strike: {strike_price} Days: {days_to_expiry} PnL: {row.unrealized_plpc:.1%}\n Target: {target_spread:.1%}  Entry: {model_spread_entry:.1%} Current: {model_spread_current:.1%} Model: {modeled_price:.2f} Delta: {delta:.2f}")    
@@ -181,7 +181,7 @@ def reversalDCA(client=api.client['DEV'],exposure_Target=0.05):
     exposure_Ratio = exposure_Current / exposure_Target
 
     if not(exposure_Ratio <= 1.25): #only checking if excess cash to deploy
-        damper = 1/2
+        damper = 1
         adjustment_factor = abs((1 / exposure_Ratio)-1)*damper if exposure_Ratio > 1 else abs(exposure_Ratio-1)*damper
         for index, position in pos.iterrows():
             if "option" in position['asset_class']:
