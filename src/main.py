@@ -85,7 +85,7 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
     if portfolio:
         if onInit:
             scheduler.add_job(id='init_managePNL', func=managePNL)
-        scheduler.add_job(id='portfolio_job_1', func=managePNL, trigger='interval', minutes=30, start_date='2024-03-25 08:05:00')
+        scheduler.add_job(id='portfolio_job_1', func=managePNL, trigger='interval', minutes=10, start_date='2024-03-25 08:05:00')
         scheduler.add_job(id='rebalance_dev', func=reversalDCA, trigger='cron', day_of_week='mon-fri', hour=13, minute=31, misfire_grace_time = None)
         scheduler.add_job(id='rebalance_prod', func=reversalDCA, args=[api.prod], trigger='cron', day_of_week='mon-fri', hour=19, misfire_grace_time = None)
         # scheduler.add_job(id='rebalance_job_1', func=alpaca_rebalance, trigger='interval', minutes=1, start_date='2024-03-25 08:05:00')
