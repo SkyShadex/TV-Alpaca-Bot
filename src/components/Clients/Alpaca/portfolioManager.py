@@ -61,16 +61,21 @@ def alpaca_rebalance():
     # The Redis client automatically handles atomic operations
 
 def managePNL(client=api.client['DEV'],tp=0.1,sl=-0.05):
+    current_time = dt.datetime.now(timezone('US/Eastern')).time()
+    if dt.time(18, 0) <= current_time or current_time <= dt.time(10,30):
+        print('morning blockout for options')
+        return
+
+    starttime = dt.datetime.now()
     pos_raw = client.get_all_positions()
     if not pos_raw:
         return
     pos = parse_positions(pos_raw)
-
-    current_time = dt.datetime.now(timezone('US/Eastern')).time()
-    if dt.time(18, 0) <= current_time or current_time <= dt.time(10,30):
-        print('morning blockout for options')
-    else:
-        manageOptions(client,pos)
+    if pos.empty:
+        return
+    manageOptions(client,pos)
+    elapsed_time = (dt.datetime.now() - starttime).total_seconds() // 60
+    print(f'Portfolio sweep complete ({elapsed_time} mins)...')
 
 def manageOptions(client,pos):
     positions=pos.loc[
@@ -83,9 +88,6 @@ def manageOptions(client,pos):
     if positions.empty:
         return
     
-    if positions.qty_available.sum() == 0:
-        return
- 
     valid_orders = []
     stoploss_orders = []
     portfolio_delta = []
@@ -96,6 +98,8 @@ def manageOptions(client,pos):
             if isOpenOrder:
                 continue
             res = checkPrices(row)
+            if res is None or len(res) < 4:
+                continue
             portfolio_delta.append(res[3])
             if res[0]:
                 if res[2]:
@@ -113,7 +117,7 @@ def manageOptions(client,pos):
         print("positions found to close")
         print(f"portfolio delta: {sum(portfolio_delta):.2f}")
 
-        if stoploss_orders:
+        if len(stoploss_orders)>0:
             for symbol in stoploss_orders:
                 try:
                     exitOrder(symbol,client)
@@ -122,7 +126,7 @@ def manageOptions(client,pos):
                     print("managePNL ",e)
                     continue
         
-        if valid_orders:
+        if len(valid_orders)>0:
             for symbol, take_profit, quantity in valid_orders:
                 try:
                     result = optionsOrder(symbol,take_profit,client=client,quantity=quantity,side='sell',isMarketOrder=False)
@@ -149,12 +153,12 @@ def checkPrices(row):
     opm.fitModel()
     modeled_price,delta = opm.forecast(strike_price,days_to_expiry,option_type)
 
-    tp=row.cost_per_unit+modeled_price/2
+    tp=float(row.cost_per_unit)+modeled_price/2
     model_spread_entry = np.log(row.cost_per_unit/modeled_price)
     model_spread_current = np.log(row.current_price/modeled_price)
     target_spread = np.abs(opm.target_spread)/2
     badDelta = np.abs(delta) < 0.4
-    pnl = abs(float(row.unrealized_plpc)) > 0.8
+    pnl = float(row.unrealized_plpc) > 1.0
     marketOrder = (model_spread_entry > target_spread and model_spread_current > target_spread) or badDelta or pnl
     limitOrder = model_spread_entry < -target_spread and model_spread_current < -target_spread
     sell = marketOrder or limitOrder
@@ -200,25 +204,22 @@ def reversalDCA(client=api.client['DEV'],exposure_Target=0.05):
             # Place an order to adjust the position
             if quantity_diff != 0: # and position['unrealized_plpc'] < 0:
                 qty = int(math.ceil(quantity_diff)) if "short" in side else round(quantity_diff,9)
-                if (exposure_Ratio > 1 and "long" in side) or (exposure_Ratio < 1 and "sell" in side):
-                    orderData = MarketOrderRequest(
-                        symbol=symbol,
-                        qty=qty,
-                        side='buy',
-                        time_in_force='day',
-                    ) 
-                else:
-                    orderData = MarketOrderRequest(
-                        symbol=symbol,
-                        qty=qty,
-                        side='sell',
-                        time_in_force='day',
-                    )
+                side_order = 'buy' if ((exposure_Ratio > 1 and "long" in side) or (exposure_Ratio < 1 and "sell" in side)) else 'sell'
+                orderData = MarketOrderRequest(
+                    symbol=symbol,
+                    qty=qty,
+                    side=side_order,
+                    time_in_force='day',
+                )
                 print(symbol,round(exposure_Ratio,3),round(adjustment_factor,3),round(quantity_diff,3),side)
                 try:
                     client.submit_order(orderData)
                 except Exception as e:
                     print(f'{symbol}: {e}')
+                    try:
+                        client.submit_order(MarketOrderRequest(symbol=symbol,notional=1.0,side=side_order,time_in_force='day'))
+                    except Exception as e:
+                        print(f'Err 2. {symbol}: {e}')
     print(round((float(client.get_account().non_marginable_buying_power)/float(client.get_account().equity))/exposure_Target,3)) #type: ignore
 
 
