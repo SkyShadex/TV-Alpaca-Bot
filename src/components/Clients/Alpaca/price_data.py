@@ -1,8 +1,9 @@
 from components.Clients.Alpaca.api_alpaca import api
 from alpaca.trading.enums import AssetClass
-from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest,CryptoBarsRequest,CryptoLatestQuoteRequest
+from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest,CryptoBarsRequest,CryptoLatestQuoteRequest,OptionLatestQuoteRequest
 from alpaca.data.historical.stock import StockHistoricalDataClient
 from alpaca.data.historical.crypto import CryptoHistoricalDataClient
+from alpaca.data.historical.option import OptionHistoricalDataClient
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 import pandas as pd
 import pytz
@@ -15,20 +16,28 @@ import redis
 
 apHist = StockHistoricalDataClient(config.API_KEY,config.API_SECRET)
 apCrypto = CryptoHistoricalDataClient(config.API_KEY,config.API_SECRET)
+apOpt = OptionHistoricalDataClient(config.API_KEY,config.API_SECRET)
 
-def get_latest_quote(symbol,crypto=False):
-    if crypto:
-        quoteParams = CryptoLatestQuoteRequest(symbol_or_symbols=symbol)
-        q = apCrypto.get_crypto_latest_quote(quoteParams,feed="us")
-    else:
-        quoteParams = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-        q = apHist.get_stock_latest_quote(quoteParams)
+def get_latest_quote(symbol,mode='equity'):
+    match mode:
+        case 'crypto':
+            quoteParams = CryptoLatestQuoteRequest(symbol_or_symbols=symbol)
+            q = apCrypto.get_crypto_latest_quote(quoteParams,feed="us")
+        case 'equity':
+            quoteParams = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+            q = apHist.get_stock_latest_quote(quoteParams)
+        case 'options':
+            quoteParams = OptionLatestQuoteRequest(symbol_or_symbols=symbol)
+            q = apOpt.get_option_latest_quote(quoteParams)
+            
     data = []
+
     if isinstance(q, dict):
         for symbol, quote in q.items():
             ask_price = quote.ask_price
             bid_price = quote.bid_price
-            data.append({'symbol': symbol, 'ask_price': ask_price, 'bid_price': bid_price})
+            spread = ask_price - bid_price
+            data.append({'symbol': symbol, 'ask_price': ask_price, 'bid_price': bid_price, 'spread': spread})
         # Create a DataFrame from the collected data
         quote = pd.DataFrame(data)
         quote['mid_price'] = (quote['ask_price']+quote['bid_price'])/2
