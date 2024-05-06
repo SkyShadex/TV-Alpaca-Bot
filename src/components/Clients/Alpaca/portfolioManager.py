@@ -4,6 +4,7 @@ from components.Clients.Alpaca.api_alpaca import api
 from components.Clients.Alpaca.portfolio import parse_positions
 from components.Clients.Alpaca.executionManager import exitOrder,optionsOrder
 from components.Clients.Alpaca.Strategy.OptionsOI import Strategy_PricingModel
+from components.Clients.Alpaca.price_data import get_latest_quote
 from pytz import timezone
 import datetime as dt
 import numpy as np
@@ -62,8 +63,8 @@ def alpaca_rebalance():
 
 def managePNL(client=api.client['DEV'],tp=0.1,sl=-0.05):
     current_time = dt.datetime.now(timezone('US/Eastern')).time()
-    if dt.time(18, 0) <= current_time or current_time <= dt.time(10,30):
-        print('morning blockout for options')
+    if dt.time(16, 30) <= current_time or current_time <= dt.time(10,30):
+        print('trading blockout hours for options')
         return
 
     starttime = dt.datetime.now()
@@ -145,6 +146,7 @@ def checkPrices(row):
     days_to_expiry = (expiry_date - today_date).days
     option_type = "put" if option_type == 'P' else "call"
 
+
     # Model fitting and data fetching based on the base symbol
     opm = Strategy_PricingModel()
     sell = False
@@ -152,19 +154,30 @@ def checkPrices(row):
     # opm.printStats = True
     opm.fitModel()
     modeled_price,delta = opm.forecast(strike_price,days_to_expiry,option_type)
+    try:
+        quote = get_latest_quote(row.symbol,'options').iloc[0]
+        liquid_spread_worst = np.log(quote.bid_price/modeled_price) if quote.bid_price > 0.0 else -1.0
+        liquid_plpc_worst = np.log(quote.bid_price/row.cost_per_unit) if quote.bid_price > 0.0 else -1.0
+        liquid_spread_mid = np.log(quote.mid_price/modeled_price)
+        liquid_plpc_mid = np.log(quote.mid_price/row.cost_per_unit)
+        # print(f'{liquid_spread_worst:.2%} {liquid_plpc_worst:.2%} {liquid_spread_mid:.2%} {liquid_plpc_mid:.2%}')
+    except Exception as e:
+        print(e)
 
-    tp=float(row.cost_per_unit)+modeled_price/2
     model_spread_entry = np.log(row.cost_per_unit/modeled_price)
     model_spread_current = np.log(row.current_price/modeled_price)
+
+    tp=float(row.cost_per_unit)+modeled_price/2
     target_spread = np.abs(opm.target_spread)/2
+    expiry_exit = days_to_expiry < 4
     badDelta = np.abs(delta) < 0.4
-    pnl = float(row.unrealized_plpc) > 1.0
-    marketOrder = (model_spread_entry > target_spread and model_spread_current > target_spread) or badDelta or pnl
-    limitOrder = model_spread_entry < -target_spread and model_spread_current < -target_spread
+    pnl = liquid_plpc_worst > 2.0
+    marketOrder = badDelta or pnl or expiry_exit #(model_spread_entry > target_spread and model_spread_current > target_spread) or 
+    limitOrder = model_spread_entry < -target_spread and liquid_spread_mid < -target_spread and liquid_plpc_worst > 0.0
     sell = marketOrder or limitOrder
     
     if sell:
-        print(f"{row.symbol} Strike: {strike_price} Days: {days_to_expiry} PnL: {row.unrealized_plpc:.1%}\n Target: {target_spread:.1%}  Entry: {model_spread_entry:.1%} Current: {model_spread_current:.1%} Model: {modeled_price:.2f} Delta: {delta:.2f}")    
+        print(f"{row.symbol} Strike: {strike_price} Days: {days_to_expiry} PnL Liq: {liquid_plpc_worst:.1%} PnL: {row.unrealized_plpc:.1%}\n Target: {target_spread:.1%}  Entry: {model_spread_entry:.1%} Current: {model_spread_current:.1%} Model: {modeled_price:.2f} Delta: {delta:.2f}")    
 
     return [sell,tp,marketOrder,delta]
 
