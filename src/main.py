@@ -38,7 +38,7 @@ from flask_apscheduler import APScheduler
 
 
 app = Flask(__name__)
-logging.basicConfig(level=logging.INFO, filename="py_log.log",filemode="w",format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
+logging.basicConfig(level=logging.INFO, filename="logs/py_log.log",filemode="a",format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
 redis_client = redis.Redis(host='redis-stack-server', port=6379, decode_responses=True)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
@@ -52,18 +52,17 @@ s = None
 manager_scheduler = APScheduler()
 scheduler = APScheduler()
 crypto_Schedule = APScheduler()
-
+warnings.simplefilter('ignore', np.RankWarning)
 def run_strat():
     universe = StrategyManager("TSMOM",1)
     l_etf = StrategyManager("TSMOM",2)
     weeklies = StrategyManager("TSMOM",3)
 
-warnings.simplefilter('ignore', np.RankWarning)
 def run_opt():
-    current_time = dt.datetime.now(timezone('US/Eastern')).time()
-    if dt.time(18, 0) <= current_time or current_time <= dt.time(10,30):
-        print('morning blockout for options')
-        return
+    # current_time = dt.datetime.now(timezone('US/Eastern')).time()
+    # if dt.time(18, 0) <= current_time or current_time <= dt.time(10,30):
+    #     print('morning blockout for options')
+    #     return
     opt = StrategyManager("TSMOM_O")
     # opt = StrategyManager("OOI")
 
