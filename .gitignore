@@ -131,3 +131,4 @@ dmypy.json
 src/logs/data.txt
 src/logs/orders.csv
 src/components/Clients/Alpaca/Strategy/
+src/static/
