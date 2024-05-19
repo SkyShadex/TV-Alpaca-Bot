@@ -35,13 +35,27 @@ def get_latest_quote(symbol,mode='equity'):
     if isinstance(q, dict):
         for symbol, quote in q.items():
             ask_price = quote.ask_price
+            ask_size = quote.ask_size
             bid_price = quote.bid_price
+            bid_size = quote.bid_size
             spread = ask_price - bid_price
-            data.append({'symbol': symbol, 'ask_price': ask_price, 'bid_price': bid_price, 'spread': spread})
-        # Create a DataFrame from the collected data
+            mid_price = (ask_price+bid_price)/2 
+            total_volume = ask_size + bid_size
+            weighted_mid_price = ((ask_price * ask_size) + (bid_price * bid_size)) / total_volume
+            if total_volume > 0:
+                mid_price = weighted_mid_price
+                
+            data.append({'symbol': symbol,
+                         'ask_price': ask_price,
+                         'ask_size': ask_size,
+                         'bid_price': bid_price,
+                         'bid_size': bid_size,
+                         'mid_price': mid_price,
+                         'mid_v': total_volume,
+                         'spread': spread})
         quote = pd.DataFrame(data)
-        quote['mid_price'] = (quote['ask_price']+quote['bid_price'])/2
-    return quote
+        quote['spread_pc'] = 1-np.log(quote['bid_price']/quote['ask_price'])
+        return quote
     
 def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day')),adjust="split",date_err=True):
     NY_TIMEZONE = pytz.timezone('America/New_York')
