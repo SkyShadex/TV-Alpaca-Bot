@@ -39,7 +39,7 @@ from flask_apscheduler import APScheduler
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, filename="logs/py_log.log",filemode="a",format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
-redis_client = redis.Redis(host='redis-stack-server', port=6379, decode_responses=True)
+redis_client = redis.Redis(host=config.DB_HOST, port=config.DB_PORT, decode_responses=True)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
 # Declaring some variables
@@ -291,5 +291,5 @@ def webhook():
         orderResults(webhook_message,side_WH)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host=config.LOCAL_HOST, port=config.LOCAL_PORT, debug=False)
     post_thread.start()

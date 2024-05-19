@@ -18,7 +18,7 @@ import redis
 import re
 import logging
 
-redis_client = redis.Redis(host='redis-stack-server', port=6379, decode_responses=True)
+redis_client = redis.Redis(host=config.DB_HOST, port=config.DB_PORT, decode_responses=True)
 ts = redis_client.ts()
 if not redis_client.exists("pnl"):
     ts.create("pnl")

@@ -32,7 +32,9 @@ EXTENDTRADE_ALLOW = False
 PORTFOLIO_REBAL = 0.55
 
 # Network Settings
-LOCAL_HOST = '0.0.0.0'
-PORT = '5000'
+LOCAL_HOST = os.getenv("LOCAL_HOST")
+LOCAL_PORT = os.getenv("LOCAL_PORT")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
 
 
