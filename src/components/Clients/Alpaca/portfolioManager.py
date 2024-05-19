@@ -182,7 +182,7 @@ def checkPrices(row):
         # print(f'[{row.symbol}] {row.cost_basis} {row.avg_entry_price}')
         # print(f'[{row.symbol}] {row.unrealized_plpc:.2%}')
         if row.unrealized_plpc >= 10: #row.cost_per_unit < 0.01 and row.cost_per_unit != 0.0:
-            row.cost_per_unit *= 100
+            row.cost_per_unit = round(100*row.cost_per_unit,2)
 
         liquid_spread_worst = np.log(quote.bid_price/modeled_price)
         liquid_plpc_worst = np.log(quote.bid_price/row.cost_per_unit)
