@@ -9,6 +9,7 @@ from alpaca.trading.requests import (ClosePositionRequest, GetOrdersRequest,
 import config
 from commons import vars
 from components.Clients.Alpaca.api_alpaca import api
+import logging
 
 
 # Declaring some variables
@@ -54,13 +55,9 @@ def calcQuantity(ticker,price,weight=1.0):
     accountInfo = api.get_account()   
     if config.MARGIN_ALLOW == True:
         buyingPower = float(accountInfo.regt_buying_power)  # type: ignore
-        #buyingPower = float(accountInfo.daytrading_buying_power)
     else:    
         buyingPower = float(accountInfo.non_marginable_buying_power)  # type: ignore
-    # position_market_value = (float(accountInfo.long_market_value)+(float(accountInfo.short_market_value)*-1)) #type: ignore
-    # # if position_market_value > float(accountInfo.regt_buying_power): #type: ignore
-    # #     buyingPower = buyingPower*(float(accountInfo.regt_buying_power)/buyingPower)
-
+ 
     quantity = max((buyingPower * config.RISK_EXPOSURE * weight),1) / price  # Position Size Based on Risk Exposure  
 
     if quantity == 0.0:
@@ -189,6 +186,7 @@ def entryOrder(symbol,price,orderID,side='buy',isMarketOrder=False,weight=1.0):
         response = f"Order {side}: {symbol} @ {slippage_price}. {quantity:.2f} shares, {tif}."
     
     print(response)
+    logging.info(f"{entryOrder.__name__} {response}")
     res = api.submit_order(orderData)
     return res
 
@@ -200,7 +198,7 @@ def exitOrder(symbol,client=api.client['DEV'], orderID="",live=False):
     res = client.close_position(symbol)
     return res
 
-def optionsOrder(symbol,price,client=api.client['DEV'],orderID="",side='buy',quantity=1,isMarketOrder=False,weight=1.0,tif='day',bet=100.0):
+def optionsOrder(symbol,price,client=api.client['DEV'],orderID="",side='buy',quantity=1,isMarketOrder=False,weight=1.0,tif='day',bet=100.0,vol_limit=5):
     if isMarketOrder:
         orderData = MarketOrderRequest(
             symbol=symbol,
@@ -209,9 +207,11 @@ def optionsOrder(symbol,price,client=api.client['DEV'],orderID="",side='buy',qua
             time_in_force=tif,
         )
     else:
-        qty = min(max(math.floor(bet / (100*price)),1),5)  
-        if side == 'sell': 
-            qty = quantity
+        qty = quantity
+        if side != 'sell': 
+            portfolio_Corrected = bet * weight
+            qty = min(max(math.floor(portfolio_Corrected / (100 * price)),1),vol_limit)  
+
         orderData = LimitOrderRequest(
                         symbol=symbol,
                         qty=qty,
@@ -220,10 +220,10 @@ def optionsOrder(symbol,price,client=api.client['DEV'],orderID="",side='buy',qua
                         time_in_force=tif,
                         limit_price=round(price,2)
                     ) 
-    print(f"Order {side}: {orderID} @ {price:.3f}. {qty:.2f} contracts, '{tif}'.")
+    response = f"Order {side}: {orderID} @ {price:.3f}. {qty:.2f} contracts, '{tif}'."    
+    print(response)
+    logging.info(f"{optionsOrder.__name__} {response}")
     return client.submit_order(orderData)
-
-
 
 # //--------------------- PROD ENV ---------------------------------//
 
@@ -242,12 +242,8 @@ def entryOrderProd(symbol,price,orderID,side='buy',isMarketOrder=False,weight=1.
     if not asset.tradable:
         return
     
-    # slippage_price = price * slippage
     acct_info_prod = client.get_account() 
-    # print(acct_info_prod.regt_buying_power)
-    buyingpower = float(acct_info_prod.regt_buying_power)
-    # print(buyingpower)
-
+    buyingpower = max(float(acct_info_prod.regt_buying_power)-500,1) # In order to keep a cash balance
     quantity = max((buyingpower * config.RISK_EXPOSURE * weight),1.1) / price
 
     if quantity == 0.0:
@@ -288,7 +284,8 @@ def entryOrderProd(symbol,price,orderID,side='buy',isMarketOrder=False,weight=1.
                 time_in_force=tif,
                 client_order_id=client_order_id
             )   
-        response = f"Order {side}: {symbol} @ {price}. {quantity:.2f} shares, {tif}."
-    print("[PROD]: ",response)
+        response = f"[PROD]: Order {side}: {symbol} @ {price}. {quantity:.2f} shares, {tif}."
+    print(response)
+    logging.info(f"{entryOrderProd.__name__} {response}")
     res = client.submit_order(orderData)
     return res
