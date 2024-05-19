@@ -12,6 +12,9 @@ from commons import vars
 from components.Clients.Alpaca.api_alpaca import api
 from components.Clients.Alpaca.price_data import get_ohlc_alpaca
 from sklearn.preprocessing import MinMaxScaler
+from alpaca.data.historical.option import OptionHistoricalDataClient
+from alpaca.data.requests import OptionChainRequest
+
 import requests
 import json
 import pandas as pd
@@ -19,7 +22,7 @@ import numpy as np
 
 # Declaring some variables
 accountInfo = api.get_account()
-
+apOpt = OptionHistoricalDataClient(config.API_KEY,config.API_SECRET)
 
 class AlpacaOptionContracts:
     def __init__(self):
@@ -31,12 +34,38 @@ class AlpacaOptionContracts:
             "accept": "application/json",
             "APCA-API-KEY-ID": self.key,
             "APCA-API-SECRET-KEY": self.secret
-        }
+        } 
 
+    def parse_chain(self, underlying_symbols=None, status="active", expiration_date=None,
+                             expiration_date_gte=None, expiration_date_lte=None, root_symbol=None,
+                             option_type=None, style='american', strike_price_gte=None, strike_price_lte=None,
+                             page_token=None, limit=1000,override=False):
+        
+        try:
+            params = OptionChainRequest(underlying_symbol=underlying_symbols,expiration_date_gte=expiration_date_gte,expiration_date_lte=expiration_date_lte)
+            optchain = apOpt.get_option_chain(request_params=params)
+            print(underlying_symbols,len(optchain))
+            optchain = pd.DataFrame(optchain)
+            print(optchain.iloc[:,:1])
+            # print(optchain.columns)
+            # print(optchain.iloc[-1])
+            # print(optchain.iloc[-5,-1])
+            # print(optchain.iloc[-4,-1])
+            # print(optchain.iloc[-3,-1])
+            # print(optchain.iloc[-2,-1])
+            # print(optchain.iloc[-1,-1])
+        except Exception as e:
+            print(e)
+    
     def get_option_contracts(self, underlying_symbols=None, status="active", expiration_date=None,
                              expiration_date_gte=None, expiration_date_lte=None, root_symbol=None,
                              option_type=None, style='american', strike_price_gte=None, strike_price_lte=None,
                              page_token=None, limit=1000,override=False):
+        # try:
+        #     self.parse_chain(underlying_symbols,expiration_date_gte,expiration_date_lte)
+        # except Exception as e:
+        #     print(e) 
+
         params = {
             "status": status,
             "expiration_date": expiration_date,
