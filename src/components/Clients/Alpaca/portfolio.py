@@ -51,7 +51,7 @@ def parse_positions(positions,commissions=0.5*2*3):
     posdf['side'] = posdf['side'].astype(str)
     posdf['breakeven'] = ((posdf['cost_basis']/posdf['qty'])+commissions)*posdf['qty']
     posdf['breakeven_per_unit'] = (posdf.breakeven/(100*posdf.qty))
-    posdf['cost_per_unit'] = (posdf['cost_basis']/posdf['qty'])/100
+    posdf['cost_per_unit'] = round((posdf['cost_basis']/posdf['qty'])/100,2)
     posdf.sort_values('unrealized_plpc',ascending=False,inplace=True)
     return posdf
 
