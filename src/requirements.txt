@@ -14,7 +14,7 @@ pandas
 pytz
 numpy
 pythonnet
-alpaca-py == 0.20.1
+alpaca-py == 0.21.0
 fastdtw
 seaborn
 scipy
