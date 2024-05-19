@@ -13,7 +13,7 @@ headers = {
 }
 
 # Date range for the portfolio request
-start_date = datetime(2023, 12, 1)
+start_date = datetime(2024, 4, 1)
 
 def parse_positions(positions,commissions=0.5*2*3):
     formatted_data = []
@@ -24,6 +24,7 @@ def parse_positions(positions,commissions=0.5*2*3):
             'symbol': position.symbol,
             'qty': position.qty,
             'side': position.side,
+            'avg_entry_price': position.avg_entry_price,
             'market_value': position.market_value,
             'cost_basis': position.cost_basis,
             'unrealized_pl': position.unrealized_pl,
@@ -41,7 +42,7 @@ def parse_positions(positions,commissions=0.5*2*3):
         formatted_data.append(data)
 
     posdf = pd.DataFrame(formatted_data)
-    numeric_cols = ['qty', 'market_value', 'cost_basis', 'unrealized_pl', 
+    numeric_cols = ['qty', 'market_value', 'cost_basis','avg_entry_price', 'unrealized_pl', 
                     'unrealized_plpc', 'unrealized_intraday_pl', 
                     'unrealized_intraday_plpc', 'current_price', 
                     'lastday_price', 'change_today', 'qty_available']
