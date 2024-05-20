@@ -62,6 +62,8 @@ def run_strat():
 def run_opt():
     opt = StrategyManager("TSMOM_O")
 
+def run_hedge():
+    opt = StrategyManager("HEDGE")
 
 # def run_pm(client):
 #     # current_time = dt.datetime.now(timezone('US/Eastern')).time()
@@ -89,6 +91,7 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
     if portfolio:
         if onInit:
             scheduler.add_job(id='managePNL_init', func=managePNL)
+            scheduler.add_job(id='hedgeStrat_init', func=run_hedge)
             # scheduler.add_job(id='rebalance_devtest', func=reversalDCA, args=[api.client['LIVE'],0.4])
         scheduler.add_job(id='managePNL_loop', func=managePNL, trigger='cron', day_of_week='mon-fri', minute='*/10', start_date='2024-03-25 08:15:00')
         scheduler.add_job(id='rebalance_Dev', func=reversalDCA, trigger='cron', day_of_week='mon-fri', hour=13, minute=31, misfire_grace_time = None)
@@ -99,7 +102,6 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
     if options:
         if onInit:
             scheduler.add_job(id='optionsStrat_init', func=run_opt)
-            scheduler.add_job(id='options_metrics_init', func=da.calcPerformance)
         scheduler.add_job(id='optionsStrat_loop', func=run_opt, trigger='cron', day_of_week='mon-fri', minute='*/10', start_date='2024-03-25 08:05:00', max_instances=2)
 
     if equities:
@@ -121,7 +123,7 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
 start.startMessage(api.prod.get_account().buying_power, api.prod.get_account().non_marginable_buying_power, api.prod.get_account().daytrade_count) # type: ignore
 start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count)
 
-manageSchedules(TradingHours=True,OrderReset=True,equities=True,options=True,portfolio=True,onInit=True)    
+manageSchedules(TradingHours=True,OrderReset=False,equities=True,options=True,portfolio=True,onInit=True)    
 
 def check_alpaca_status():
     if not api.check_alpaca_status():
