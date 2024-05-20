@@ -62,9 +62,9 @@ initialize_globals()
 #             print(f"Updating: {currentDate} {current_equity}")
 
 def managePNL():
-    # if not api.trading_hours():
-    #     print('trading blockout hours')
-    #     return
+    if not api.trading_hours():
+        print('trading blockout hours')
+        return
     
     print(f'Portfolio Check Start...')
     starttime = dt.datetime.now()
@@ -76,7 +76,7 @@ def managePNL():
         pos = parse_positions(pos_raw)
         if pos.empty:continue
 
-        # if not api.trading_hours(resume_time=9,pause_time=16):continue
+        if not api.trading_hours(resume_time=9,pause_time=16):continue
 
         manageOptions(client,pos)
 
@@ -86,7 +86,6 @@ def managePNL():
     
 
 def manageOptions(client,pos):
-
     positions=pos.loc[
         (pos['asset_class'].str.contains("us_option",case=False)) &
         (pos['qty_available'] > 0)
@@ -107,7 +106,7 @@ def manageOptions(client,pos):
             
             res = checkPrices(row)
 
-            portfolio_delta.append(res[3])
+            portfolio_delta.append(res[3]*row.qty)
 
             if res[0]:
                 if res[2]:
@@ -120,7 +119,11 @@ def manageOptions(client,pos):
             logging.exception(f"{manageOptions.__name__} Error: {e}")
             continue
 
-    redis_client.set('portfolio_delta', float(sum(portfolio_delta)))
+    # pass this to the database
+    if client is api.client['DEV']:
+        redis_client.set('portfolio_delta', float(sum(portfolio_delta)))
+    else:
+        redis_client.set('portfolio_delta_live', float(sum(portfolio_delta)))    
 
     if limit_orders or stoploss_orders:
         print("positions found to close")
@@ -188,8 +191,8 @@ def checkPrices(row):
         liquid_plpc_worst = np.log(quote.bid_price/row.cost_per_unit)
         liquid_spread_mid = np.log(quote.mid_price/modeled_price)
         liquid_plpc_mid = np.log(quote.mid_price/row.cost_per_unit)
-        # print(f'[{row.symbol}]: {row.cost_per_unit} P/L: {liquid_plpc_mid:.2%} % of Spread: {liquid_spread_mid:.2%}')
-        logging.info(f'[{row.symbol}] {row.cost_per_unit} P/L: [{liquid_plpc_mid:.2%},{liquid_plpc_worst:.2%},{row.unrealized_plpc:.2%}]  % of Spread: [{liquid_spread_mid:.2%} {liquid_spread_worst:.2%}]')
+        
+        # logging.info(f'[{row.symbol}] {row.cost_per_unit} P/L: [{liquid_plpc_mid:.2%},{liquid_plpc_worst:.2%},{row.unrealized_plpc:.2%}]  % of Spread: [{liquid_spread_mid:.2%} {liquid_spread_worst:.2%}]')
 
         model_spread_entry = np.log(row.cost_per_unit/modeled_price)
         model_spread_current = np.log(row.current_price/modeled_price)
@@ -202,11 +205,13 @@ def checkPrices(row):
         pnl = max(liquid_plpc_mid,liquid_plpc_worst) > 0.2 # and quote.mid_price >= modeled_price ///// previously needed to check midprice to place safer market orders. switched to limit orders. also changed to vw_midprice
         marketOrder = badDelta or time_exit
         sell = marketOrder or pnl
-        conditions = [sell,[time_exit,days_to_expiry],[badDelta,round(delta,2)],pnl,marketOrder]
+        simple_midprice = ((quote.ask_price+quote.bid_price)/2)
+        conditions = [sell,[time_exit,days_to_expiry],[badDelta,round(delta,2)],pnl,marketOrder,[simple_midprice<quote.mid_price,round(simple_midprice,2),round(quote.mid_price,2)]]
         if sell:
+            print(f'[{row.symbol}]: {row.cost_per_unit:.4f} P/L: {liquid_plpc_mid:.2%} % of Spread: {liquid_spread_mid:.2%}')
             logging.info(f'{row.symbol} {conditions}')
             logging.info(f'[{row.symbol}] {row.cost_per_unit} P/L: [{liquid_plpc_mid:.2%} {liquid_plpc_worst:.2%}]  % of Spread: [{liquid_spread_mid:.2%} {liquid_spread_worst:.2%}]')
-            logging.info(f"{row.symbol} Strike: {strike_price} PnL Liq: {liquid_plpc_worst:.1%} PnL: {row.unrealized_plpc:.1%}\n Target: {target_spread:.1%} Model: {modeled_price:.2f} Delta: {delta:.2f}")    
+            logging.info(f"{row.symbol} Strike: {strike_price} Model Price: {modeled_price:.2f} Mid Price: {quote.mid_price:.2f} Mid2: {simple_midprice:.2f} Delta: {delta:.2f}")    
             
         return [sell,tp,marketOrder,delta,quote.mid_v]
 
@@ -238,11 +243,11 @@ def reversalDCA(client=api.client['DEV'],exposure_Target=0.05):
             return
         pos = parse_positions(pos_raw)
 
-        equities_pre = pos.loc[~pos['asset_class'].str.contains('option')]
-        equities = equities_pre.loc[~((equities_pre['side'].str.contains('short')) & (equities_pre['qty_available'].abs() < 2))].copy()
+        equities_pre = pos.loc[~pos['asset_class'].str.contains("us_option",case=False)]
+        equities = equities_pre.loc[~((equities_pre['side'].str.contains("short",case=False)) & (equities_pre['qty_available'].abs() < 2))].copy()
         equities['abs_market_value'] = equities['market_value'].abs()
         if exposure_Ratio > 1:
-            threshold = equities['abs_market_value'].quantile(0.50)
+            threshold = equities['abs_market_value'].quantile(0.75)
             filtered_equities = equities.loc[equities['abs_market_value'] <= threshold]
         else:
             threshold = equities['abs_market_value'].quantile(0.75)
@@ -284,7 +289,7 @@ def reversalDCA(client=api.client['DEV'],exposure_Target=0.05):
         logging.exception(f"{reversalDCA.__name__} Error 2: {e}")
 
 class PortfolioManager():
-    def __init__(self):
+    def __init__(self,client = api.client['DEV']):
         self.riskfreerate = 0.05203
         self.short_interest_rate = 0.085
         self.cash_allocation = 0.05
@@ -293,8 +298,9 @@ class PortfolioManager():
         self.long_bias = 0.2
         self.short_allocation = self.riskfreerate+self.short_interest_rate+self.long_bias+1
         self.base_risk = config.RISK_EXPOSURE
-        self.portfolio_delta = 0.0
-        self.update_values()
+        self.portfolio_delta = float(redis_client.get('portfolio_delta'))
+        self.update_values(client)
+        self.update_instruments(client)
 
     def update_values(self,client = api.client['DEV']):
         acct_info = client.get_account()
@@ -333,15 +339,23 @@ class PortfolioManager():
             return False
         
         try:
-            equities = self.positions.loc[~self.positions['asset_class'].str.contains('option')]
+            equities = self.positions.loc[~self.positions['asset_class'].str.contains("us_option",case=False)].copy()
             cost_EQ = equities.cost_basis.abs().to_numpy()
-            options = self.positions.loc[self.positions['asset_class'].str.contains('option')]
+            options = self.positions.loc[self.positions['asset_class'].str.contains("us_option",case=False)]
             cost_OP = options.cost_basis.abs().to_numpy()
+            # print(equities.qty.sum(),options.qty.sum())
+
+            hotfix = options.unrealized_plpc.to_numpy()
+            
+            if hotfix.any() > 10:
+                cost_OP *= 100
+
             op_ratio = cost_OP.sum()/cost_EQ.sum()
             correctionFactor = self.options_allocation/op_ratio
             smoothingFactor = 0.5
             self.options_CF = correctionFactor*smoothingFactor
-            # print(cost_OP.sum(),cost_EQ.sum(),op_ratio,self.options_CF)
+            self.op_ratio = op_ratio
+            print(f'Options Value {cost_OP.sum():.2f}, Equity Value {cost_EQ.sum():.2f}, {op_ratio:.2%}, {self.options_CF:.2f}')
             return True
         except Exception as e:
             logging.exception(f"{self.update_instruments.__name__} Error: {e}")
@@ -359,8 +373,8 @@ class PortfolioManager():
         damper = 1
         adjustment_factor = abs((1 / self.exposure_Ratio)-1)*damper if self.exposure_Ratio > 1 else abs(self.exposure_Ratio-1)*damper
 
-        equities_pre = self.positions.loc[~self.positions['asset_class'].str.contains('option')]
-        equities = equities_pre.loc[~((equities_pre['side'].str.contains('short')) & (equities_pre['qty_available'].abs() < 2))].copy()
+        equities_pre = self.positions.loc[~self.positions['asset_class'].str.contains("us_option",case=False)]
+        equities = equities_pre.loc[~((equities_pre['side'].str.contains("short",case=False)) & (equities_pre['qty_available'].abs() < 2))].copy()
         equities['abs_market_value'] = equities['market_value'].abs()
 
         if self.exposure_Ratio > 1:
