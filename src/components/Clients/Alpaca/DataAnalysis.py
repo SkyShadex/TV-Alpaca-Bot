@@ -64,19 +64,26 @@ def calcPerformance():
     activity_df = collectActivity()
     if activity_df is not None:
         # Convert price to numeric and ensure 'qty' is an integer
-        activity_df = activity_df.loc[(activity_df['type']=='fill')&(activity_df.symbol.str.len()>6)]
+        activity_df = activity_df.loc[(activity_df['type']=='fill')]
         activity_df['price'] = pd.to_numeric(activity_df['price'], errors='coerce')
         activity_df['qty'] = activity_df['qty'].astype(float)
-        activity_df.sort_values(by=['symbol', 'transaction_time'],ascending=False, inplace=True)
+        activity_df.sort_values(by=['symbol', 'transaction_time'],ascending=False, inplace=True)    
 
+        activity_df = activity_df.loc[(activity_df.symbol.str.len()>6)]
         # Calculate the balance based on the side of the transaction
         activity_df['balance'] = np.where(activity_df['side'] == 'sell',
                                           abs(activity_df['price'] * activity_df['qty'] * 100),
                                           -(activity_df['price'] * activity_df['qty'] * 100))
         
         # print(activity_df[['symbol', 'price', 'side', 'balance']].head(30))
+        price_filtered = activity_df.loc[(activity_df['price'] < 0.3) & (activity_df['side'] == 'buy')]
+        cull_symbols = price_filtered.symbol.unique()
 
         symbols = activity_df.symbol.unique()
+
+        remaining_symbols = list(set(symbols) - set(cull_symbols))
+        remaining_symbols = np.array(remaining_symbols)
+
         pnl_data = []
         current_holdings = []
         for symbol in symbols:
@@ -95,18 +102,19 @@ def calcPerformance():
                 current_holdings.append(buys.iloc[0])
                 buys = buys.iloc[1:]
 
-
             contract_symbol = symbol
             base_symbol = api.parseOptSym(contract_symbol)[0]
             buy_sum = abs(buys.balance.sum())
             sell_sum = abs(sells.balance.sum())
+            avg_contract = buys.price.mean()
 
             pnl_data.append({
                 'symbol': symbol,
                 'base_symbol': base_symbol,
                 'buy_sum': buy_sum,
                 'sell_sum': sell_sum,
-                'Returns': (sell_sum / buy_sum) - 1
+                'Returns': (sell_sum / buy_sum) - 1,
+                'Avg_Price': avg_contract
                 })
 
         try:
@@ -117,39 +125,54 @@ def calcPerformance():
 
             grouped_data = pnl_df.groupby('base_symbol').agg({
                 'buy_sum': 'sum',
-                'sell_sum': 'sum'
+                'sell_sum': 'sum',
+                'Avg_Price': 'mean'
                 }).reset_index()
             grouped_data['Returns'] = (grouped_data['sell_sum'] / grouped_data['buy_sum']) - 1
             grouped_data['net_PnL'] = grouped_data['sell_sum'] - grouped_data['buy_sum']
 
-            print(f'\n//================//\n{pnl_df[["base_symbol"]].describe()}\n//================//\nOptions Returns Stats:\n{grouped_data[["Returns","net_PnL"]].describe().round(2)}\n//================//\n')
+            print(f'\n//================//\n{pnl_df[["base_symbol"]].describe()}\n//================//\nOptions Returns Stats:\n{grouped_data[["Returns","net_PnL","Avg_Price"]].describe().round(2)}\n//================//\n')
             print(f'Estimated P/L: {grouped_data.net_PnL.sum():.2f} Estimated Current Holdings: {current_holdings_df.balance.abs().sum():.2f}')
 
             # Create a figure with two subplots
             fig = plt.figure(figsize=(20, 20))
             gs = fig.add_gridspec(2, 2)
             
+            # Create quantile categories with range labels
+            quantile_bins = pd.qcut(grouped_data['Avg_Price'], q=4)
+            grouped_data['Avg_Price_Quantiles'] = quantile_bins
+
+            # Create string labels for the quantile ranges
+            quantile_labels = quantile_bins.cat.categories
+            grouped_data['Avg_Price_Quantiles'] = grouped_data['Avg_Price_Quantiles'].apply(lambda x: f'{x.left:.2f}-{x.right:.2f}')
+
             ax1 = fig.add_subplot(gs[0, 0])
-            sns.violinplot(data=grouped_data, y='Returns', inner="box", linewidth=1.5, ax=ax1, color="skyblue")
+            sns.violinplot(data=grouped_data, x='Avg_Price_Quantiles', y='Returns', inner="box", linewidth=1.5, ax=ax1, color="skyblue")
             ax1.set_title("Options Returns (%)")
             ax1.set_ylabel("Returns (%)")
 
             ax2 = fig.add_subplot(gs[0, 1])
-            sns.violinplot(data=grouped_data, y='net_PnL', inner="box", linewidth=1.5, ax=ax2, color="orange")
+            sns.violinplot(data=grouped_data, x='Avg_Price_Quantiles', y='net_PnL', inner="box", linewidth=1.5, ax=ax2, color="orange")
             ax2.set_title("Options Returns ($)")
             ax2.set_ylabel("Returns ($)")
 
             ax3 = fig.add_subplot(gs[1, :])
-            ax3.scatter(grouped_data['Returns'], grouped_data['net_PnL'])
+            ax3.scatter(grouped_data['Avg_Price'], grouped_data['Returns'])
+            sns.regplot(data=grouped_data, x='Avg_Price', y='Returns', ax=ax3, scatter=False, color='red', line_kws={'linewidth': 1})
+
             for i, txt in enumerate(grouped_data['base_symbol']):
-                ax3.annotate(txt, (grouped_data['Returns'][i], grouped_data['net_PnL'][i]))
-            ax3.set_title("Returns vs. Net PnL")
-            ax3.set_xlabel("Returns (%)")
-            ax3.set_ylabel("Net PnL ($)")
+                ax3.annotate(txt, (grouped_data['Avg_Price'][i], grouped_data['Returns'][i]))
+            ax3.set_title("Returns vs. Avg_Price")
+            ax3.set_ylabel("Returns (%)")
+            ax3.set_xlabel("Avg_Price ($)")
 
             plt.tight_layout()  # Adjust layout to prevent overlapping
-            filename = f'logs/options_subplots_dviz_{current_time.strftime("%Y-%m-%d_%H-%M-%S")}.png'
-            plt.savefig(filename)
+
+            static_path = 'logs/graphs'
+            os.makedirs(static_path, exist_ok=True)
+            filename = f'options_subplots_dviz_{current_time.strftime("%Y-%m-%d_%H-%M-%S")}.png'
+            file_path = os.path.join(static_path, filename)
+            plt.savefig(file_path)
             plt.close()
         except Exception as e:
             print(e)
