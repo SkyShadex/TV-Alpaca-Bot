@@ -41,10 +41,17 @@ def get_latest_quote(symbol,mode='equity'):
             spread = ask_price - bid_price
             mid_price = (ask_price+bid_price)/2 
             total_volume = ask_size + bid_size
-            weighted_mid_price = ((ask_price * ask_size) + (bid_price * bid_size)) / total_volume
             if total_volume > 0:
+                weighted_mid_price = ((ask_price * ask_size) + (bid_price * bid_size)) / total_volume
                 mid_price = weighted_mid_price
-                
+            # print({'symbol': symbol,
+            #              'ask_price': ask_price,
+            #              'ask_size': ask_size,
+            #              'bid_price': bid_price,
+            #              'bid_size': bid_size,
+            #              'mid_price': mid_price,
+            #              'mid_v': total_volume,
+            #              'spread': spread})    
             data.append({'symbol': symbol,
                          'ask_price': ask_price,
                          'ask_size': ask_size,
@@ -102,7 +109,7 @@ def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day
         ohlcv['symbol'] = symbol
         ohlcv['log_returns'] = np.log(ohlcv['close']).diff()
         ohlcv['log_returns'] = ohlcv['log_returns'].fillna(0)
-        ohlcv['vol_tc'] = ohlcv['volume'] / ohlcv['trade_count']
+        ohlcv['vol_tc'] = ohlcv['volume'] / max(ohlcv['trade_count'],1) # divide by zero???
 
         value_at_risk = ohlcv['log_returns'].quantile(0.05)
         losses_below_var = ohlcv[ohlcv['log_returns'] < value_at_risk]['log_returns']
