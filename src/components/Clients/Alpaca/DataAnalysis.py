@@ -76,7 +76,7 @@ def calcPerformance():
                                           -(activity_df['price'] * activity_df['qty'] * 100))
         
         # print(activity_df[['symbol', 'price', 'side', 'balance']].head(30))
-        price_filtered = activity_df.loc[(activity_df['price'] < 0.3) & (activity_df['side'] == 'buy')]
+        price_filtered = activity_df.loc[(activity_df['price'] < 1.0) & (activity_df['side'] == 'buy')]
         cull_symbols = price_filtered.symbol.unique()
 
         symbols = activity_df.symbol.unique()
@@ -105,6 +105,8 @@ def calcPerformance():
             contract_symbol = symbol
             base_symbol = api.parseOptSym(contract_symbol)[0]
             buy_sum = abs(buys.balance.sum())
+            if buy_sum == 0.0:
+                continue
             sell_sum = abs(sells.balance.sum())
             avg_contract = buys.price.mean()
 
@@ -131,53 +133,75 @@ def calcPerformance():
             grouped_data['Returns'] = (grouped_data['sell_sum'] / grouped_data['buy_sum']) - 1
             grouped_data['net_PnL'] = grouped_data['sell_sum'] - grouped_data['buy_sum']
 
-            print(f'\n//================//\n{pnl_df[["base_symbol"]].describe()}\n//================//\nOptions Returns Stats:\n{grouped_data[["Returns","net_PnL","Avg_Price"]].describe().round(2)}\n//================//\n')
-            print(f'Estimated P/L: {grouped_data.net_PnL.sum():.2f} Estimated Current Holdings: {current_holdings_df.balance.abs().sum():.2f}')
+            pnl_description = pnl_df[["base_symbol"]].describe()
+            grouped_stats = grouped_data[["Returns", "net_PnL", "Avg_Price"]].describe().round(2)
+            estimated_pl = grouped_data.net_PnL.sum()
+            estimated_holdings = current_holdings_df.balance.abs().sum()
 
-            # Create a figure with two subplots
-            fig = plt.figure(figsize=(20, 20))
-            gs = fig.add_gridspec(2, 2)
+            print(f"""
+            //================//
+            Base Symbol Description:
+            {pnl_description.to_string()}
+
+            //================//
+            Options Returns Stats:
+            {grouped_stats.to_string()}
+
+            //================//
+            Estimated P/L: {estimated_pl:.2f} 
+            Estimated Current Holdings: {estimated_holdings:.2f}
+            //================//
+            """)
+            plotOptionsMetrics(grouped_data)
             
-            # Create quantile categories with range labels
-            quantile_bins = pd.qcut(grouped_data['Avg_Price'], q=4)
-            grouped_data['Avg_Price_Quantiles'] = quantile_bins
-
-            # Create string labels for the quantile ranges
-            quantile_labels = quantile_bins.cat.categories
-            grouped_data['Avg_Price_Quantiles'] = grouped_data['Avg_Price_Quantiles'].apply(lambda x: f'{x.left:.2f}-{x.right:.2f}')
-
-            ax1 = fig.add_subplot(gs[0, 0])
-            sns.violinplot(data=grouped_data, x='Avg_Price_Quantiles', y='Returns', inner="box", linewidth=1.5, ax=ax1, color="skyblue")
-            ax1.set_title("Options Returns (%)")
-            ax1.set_ylabel("Returns (%)")
-
-            ax2 = fig.add_subplot(gs[0, 1])
-            sns.violinplot(data=grouped_data, x='Avg_Price_Quantiles', y='net_PnL', inner="box", linewidth=1.5, ax=ax2, color="orange")
-            ax2.set_title("Options Returns ($)")
-            ax2.set_ylabel("Returns ($)")
-
-            ax3 = fig.add_subplot(gs[1, :])
-            ax3.scatter(grouped_data['Avg_Price'], grouped_data['Returns'])
-            sns.regplot(data=grouped_data, x='Avg_Price', y='Returns', ax=ax3, scatter=False, color='red', line_kws={'linewidth': 1})
-
-            for i, txt in enumerate(grouped_data['base_symbol']):
-                ax3.annotate(txt, (grouped_data['Avg_Price'][i], grouped_data['Returns'][i]))
-            ax3.set_title("Returns vs. Avg_Price")
-            ax3.set_ylabel("Returns (%)")
-            ax3.set_xlabel("Avg_Price ($)")
-
-            plt.tight_layout()  # Adjust layout to prevent overlapping
-
-            static_path = 'logs/graphs'
-            os.makedirs(static_path, exist_ok=True)
-            filename = f'options_subplots_dviz_{current_time.strftime("%Y-%m-%d_%H-%M-%S")}.png'
-            file_path = os.path.join(static_path, filename)
-            plt.savefig(file_path)
-            plt.close()
         except Exception as e:
             print(e)
 
 
+def plotOptionsMetrics(grouped_data):
+    # Create a figure with two subplots
+    current_time = dt.datetime.now(pytz.utc)
+    fig = plt.figure(figsize=(20, 20))
+    gs = fig.add_gridspec(2, 2)
+    
+    # Create quantile categories with range labels
+    quantile_bins = pd.qcut(grouped_data['Avg_Price'], q=4)
+    grouped_data['Avg_Price_Quantiles'] = quantile_bins
+
+    # Create string labels for the quantile ranges
+    quantile_labels = quantile_bins.cat.categories
+    grouped_data['Avg_Price_Quantiles'] = grouped_data['Avg_Price_Quantiles'].apply(lambda x: f'{x.left:.2f}-{x.right:.2f}')
+
+    ax1 = fig.add_subplot(gs[0, 0])
+    sns.violinplot(data=grouped_data, x='Avg_Price_Quantiles', y='Returns', inner="box", linewidth=1.5, ax=ax1, color="skyblue")
+    ax1.axhline(y=0, color='red', linestyle='--', linewidth=0.5, alpha=0.75)
+    ax1.set_title("Options Returns (%)")
+    ax1.set_ylabel("Returns (%)")
+
+    ax2 = fig.add_subplot(gs[0, 1])
+    sns.violinplot(data=grouped_data, x='Avg_Price_Quantiles', y='net_PnL', inner="box", linewidth=1.5, ax=ax2, color="orange")
+    ax2.axhline(y=0, color='red', linestyle='--', linewidth=0.5, alpha=0.75)
+    ax2.set_title("Options Returns ($)")
+    ax2.set_ylabel("Returns ($)")
+
+    ax3 = fig.add_subplot(gs[1, :])
+    ax3.scatter(grouped_data['Avg_Price'], grouped_data['Returns'])
+    sns.regplot(data=grouped_data, x='Avg_Price', y='Returns', ax=ax3, scatter=False, color='red', line_kws={'linewidth': 1})
+    for i, txt in enumerate(grouped_data['base_symbol']):
+        ax3.annotate(txt, (grouped_data['Avg_Price'][i], grouped_data['Returns'][i]))
+    ax3.set_title("Returns vs. Avg_Price")
+    ax3.set_ylabel("Returns (%)")
+    ax3.set_xlabel("Avg_Price ($)")
+
+    fig.suptitle(f"Options Performance Analysis. Estimated P/L: {grouped_data.net_PnL.sum():.2f}", fontsize=16)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    static_path = 'logs/graphs'
+    os.makedirs(static_path, exist_ok=True)
+    filename = f'options_subplots_dviz_{current_time.strftime("%Y-%m-%d_%H-%M-%S")}.png'
+    file_path = os.path.join(static_path, filename)
+    plt.savefig(file_path)
+    plt.close()
 
 def collectOrders():
     end_date = dt.datetime.combine(dt.date.today(), dt.datetime.min.time())
@@ -205,7 +229,7 @@ def collectOrders():
             time.sleep(1) # sleep to avoid API rate limits
         
         df = pd.DataFrame(all_orders)
-        print(df.head())
+        # print(df.head())
         df.to_csv('logs/orders.csv', index=False)
         return df
     
@@ -248,8 +272,8 @@ def dataCrunch(plot_filename):
 
         if net_qty == 0:
             closed_positions.append((symbol, pnl, net_qty, sell_qty, buy_qty))
-        else:
-            print(total_value,sell_qty,buy_qty)
+        # else:
+            # print(total_value,sell_qty,buy_qty)
  
     # Create a DataFrame for closed positions
     closed_positions_df = pd.DataFrame(
