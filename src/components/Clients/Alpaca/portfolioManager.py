@@ -118,11 +118,12 @@ def manageOptions(client,pos):
             logging.exception(f"{manageOptions.__name__} Error: {e}")
             continue
 
-    # pass this to the database
-    if client is api.client['DEV']:
-        redis_client.set('portfolio_delta', float(sum(portfolio_delta)))
-    else:
-        redis_client.set('portfolio_delta_live', float(sum(portfolio_delta)))    
+    if portfolio_delta is not None:
+        # pass this to the database
+        if client is api.client['DEV']:
+            redis_client.set('portfolio_delta', float(sum(portfolio_delta)))
+        else:
+            redis_client.set('portfolio_delta_live', float(sum(portfolio_delta)))    
 
     if limit_orders or stoploss_orders:
         print("positions found to close")
@@ -293,12 +294,21 @@ class PortfolioManager():
         self.long_bias = 0.2
         self.short_allocation = self.riskfreerate+self.short_interest_rate+self.long_bias+1
         self.base_risk = config.RISK_EXPOSURE
-        self.portfolio_delta = float(redis_client.get('portfolio_delta')) if client is api.client['DEV'] else float(redis_client.get('portfolio_delta_live'))
+        # self.portfolio_delta = float(redis_client.get('portfolio_delta')) if client is api.client['DEV'] else float(redis_client.get('portfolio_delta_live'))
         self.client = client
         self.update_values(client)
         self.update_instruments(client)
 
+
+
     def update_values(self,client = api.client['DEV']):
+        key = 'portfolio_delta_live' if client is api.client['LIVE'] else 'portfolio_delta'
+        portfolio_delta = redis_client.get(key)
+        self.portfolio_delta = float(portfolio_delta) if portfolio_delta is not None else 0.0
+
+        # self.portfolio_delta = float(redis_client.get('portfolio_delta')) if client is api.client['DEV'] else float(redis_client.get('portfolio_delta_live'))
+        
+
         acct_info = client.get_account()
         if not acct_info:
             return False
