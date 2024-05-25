@@ -12,6 +12,7 @@ import numpy as np
 import config
 import time
 import redis
+import logging
 
 
 apHist = StockHistoricalDataClient(config.API_KEY,config.API_SECRET)
@@ -36,28 +37,30 @@ def get_latest_quote(symbol,mode='equity'):
         for symbol, quote in q.items():
             ask_price = quote.ask_price
             ask_size = quote.ask_size
-            bid_price = quote.bid_price
+            bid_price = max(quote.bid_price,2.2250738585072014e-308) # reduce errors from bid_price being zero in live environments
             bid_size = quote.bid_size
             spread = ask_price - bid_price
             mid_price = (ask_price+bid_price)/2 
             total_volume = ask_size + bid_size
-            if total_volume > 0:
+            if total_volume != 0.0:
                 weighted_mid_price = ((ask_price * ask_size) + (bid_price * bid_size)) / total_volume
                 mid_price = weighted_mid_price
-            # print({'symbol': symbol,
-            #              'ask_price': ask_price,
-            #              'ask_size': ask_size,
-            #              'bid_price': bid_price,
-            #              'bid_size': bid_size,
-            #              'mid_price': mid_price,
-            #              'mid_v': total_volume,
-            #              'spread': spread})    
+            logging.debug({'symbol': symbol,
+                         'ask_price': ask_price,
+                         'ask_size': ask_size,
+                         'bid_price': bid_price,
+                         'bid_size': bid_size,
+                         'mid_price': mid_price,
+                         'mid_price_raw': (ask_price+bid_price)/2,
+                         'mid_v': total_volume,
+                         'spread': spread})    
             data.append({'symbol': symbol,
                          'ask_price': ask_price,
                          'ask_size': ask_size,
                          'bid_price': bid_price,
                          'bid_size': bid_size,
                          'mid_price': mid_price,
+                         'mid_price_vw': (ask_price+bid_price)/2,
                          'mid_v': total_volume,
                          'spread': spread})
         quote = pd.DataFrame(data)
@@ -109,7 +112,7 @@ def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day
         ohlcv['symbol'] = symbol
         ohlcv['log_returns'] = np.log(ohlcv['close']).diff()
         ohlcv['log_returns'] = ohlcv['log_returns'].fillna(0)
-        ohlcv['vol_tc'] = ohlcv['volume'] / max(ohlcv['trade_count'],1) # divide by zero???
+        ohlcv['vol_tc'] = ohlcv['volume'] / ohlcv['trade_count'] # divide by zero???
 
         value_at_risk = ohlcv['log_returns'].quantile(0.05)
         losses_below_var = ohlcv[ohlcv['log_returns'] < value_at_risk]['log_returns']
@@ -120,6 +123,7 @@ def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day
             ohlcv['date'] = pd.to_datetime(ohlcv['timestamp'])
             ohlcv = ohlcv.set_index(pd.DatetimeIndex(ohlcv['date']))
         except Exception as e:
+            logging.warning(e)
             raise e
 
         if ohlcv.isin([np.inf, -np.inf, np.nan]).any().any() and not isCrypto:
