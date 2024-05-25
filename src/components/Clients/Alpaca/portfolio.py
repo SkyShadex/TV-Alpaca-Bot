@@ -6,10 +6,15 @@ from alpaca.trading.models import Position, Order
 
 # Set Alpaca Trading API
 base_url = 'https://paper-api.alpaca.markets'
+base_url2 = 'https://api.alpaca.markets'
 endpoint = '/v2/account/portfolio/history'
 headers = {
     'APCA-API-KEY-ID': config.API_KEY,
     'APCA-API-SECRET-KEY': config.API_SECRET
+}
+headers2 = {
+    'APCA-API-KEY-ID': config.API_KEY_PROD,
+    'APCA-API-SECRET-KEY': config.API_SECRET_PROD
 }
 
 # Date range for the portfolio request
@@ -19,25 +24,25 @@ def parse_positions(positions,commissions=0.5*2*3):
     formatted_data = []
     for position in positions:
         data = {
-            'asset_id': position.asset_id,
-            'asset_class' : position.asset_class,
-            'symbol': position.symbol,
-            'qty': position.qty,
-            'side': position.side,
-            'avg_entry_price': position.avg_entry_price,
-            'market_value': position.market_value,
-            'cost_basis': position.cost_basis,
-            'unrealized_pl': position.unrealized_pl,
-            'unrealized_plpc': position.unrealized_plpc,
-            'unrealized_intraday_pl': position.unrealized_intraday_pl,
-            'unrealized_intraday_plpc': position.unrealized_intraday_plpc,
-            'current_price': position.current_price,
-            'lastday_price': position.lastday_price,
-            'change_today': position.change_today,
-            'swap_rate': position.swap_rate,
-            'avg_entry_swap_rate': position.avg_entry_swap_rate,
-            'usd': position.usd,
-            'qty_available': position.qty_available
+            'asset_id': str(position.asset_id),
+            'asset_class' : str(position.asset_class),
+            'symbol': str(position.symbol),
+            'qty': float(position.qty),
+            'side': str(position.side),
+            'avg_entry_price': float(position.avg_entry_price),
+            'market_value': float(position.market_value),
+            'cost_basis': float(position.cost_basis),
+            'unrealized_pl': float(position.unrealized_pl),
+            'unrealized_plpc': float(position.unrealized_plpc),
+            'unrealized_intraday_pl': float(position.unrealized_intraday_pl),
+            'unrealized_intraday_plpc': float(position.unrealized_intraday_plpc),
+            'current_price': float(position.current_price),
+            'lastday_price': float(position.lastday_price),
+            'change_today': float(position.change_today),
+            'swap_rate': float(position.swap_rate) if position.swap_rate is not None else 0.0,
+            'avg_entry_swap_rate': float(position.avg_entry_swap_rate) if position.avg_entry_swap_rate is not None else 0.0,
+            'usd': float(position.usd) if position.usd is not None else 0.0,
+            'qty_available': float(position.qty_available)
         }
         formatted_data.append(data)
 
@@ -101,7 +106,7 @@ def parse_orders(orders):
 def get_params(start_date, end_date=datetime.today()):
     # Calculate the duration of the date range in days
     duration = (end_date - start_date).days
-    print(duration)
+    # print(duration)
 
     if duration <= 30:
         periodPD = '{}D'.format(duration)
@@ -126,9 +131,9 @@ def get_params(start_date, end_date=datetime.today()):
 def request_portfolio_history():
     params=get_params(start_date)
     response = requests.get(
-        base_url + endpoint,
+        base_url2 + endpoint,
         params,
-        headers=headers #type: ignore
+        headers=headers2 #type: ignore
     )
 
     if response.status_code == 200:
