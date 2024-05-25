@@ -70,7 +70,7 @@ def get_latest_quote(symbol,mode='equity'):
 def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day')),adjust="split",date_err=True):
     NY_TIMEZONE = pytz.timezone('America/New_York')
     current_date = pd.Timestamp.now(tz=NY_TIMEZONE)
-    start_date = current_date - dt.timedelta(days=lookback)
+    oldFound = False
     sleep_duration = 0
     # Ensure symbols is always treated as a list
     if isinstance(symbols, pd.Series):
@@ -81,11 +81,20 @@ def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day
     else:
         symbols = [symbols]
         symCount = len(symbols)
+        old_price_data = retrieve_ohlcv_db(symbols[0],timeframe)
+        if len(old_price_data) > 1500:
+            lookback = 30
+            oldFound = True
+            date_err = False
+        else:
+            lookback = 365*10
+            date_err = False
     
     all_ohlcv = []
     all_value_at_risk = {}
     skipped = 0
-               
+
+    start_date = current_date - dt.timedelta(days=lookback)           
     for i, symbol in enumerate(symbols):
         percent_complete = (i + 1) / symCount * 100
         if symCount > 1:
@@ -145,6 +154,12 @@ def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day
     # if skipped != 0:
     #     print(f'symbols skipped: {skipped}')
     if len(all_ohlcv) == 1:  # Single symbol request
+        if oldFound:
+            all_ohlcv = pd.concat([old_price_data,all_ohlcv[0]])
+            all_ohlcv.drop_duplicates(keep='last',inplace=True)
+            store_ohlcv_db(all_ohlcv,all_ohlcv.iloc[0].symbol,timeframe)
+            return all_ohlcv
+        store_ohlcv_db(all_ohlcv[0],all_ohlcv[0].iloc[0].symbol,timeframe)
         return all_ohlcv[0]
     elif len(all_ohlcv) == 0:
         raise RuntimeError("No valid data returned")
@@ -152,33 +167,44 @@ def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day
         return pd.concat(all_ohlcv)
     
 
-def store_ohlcv_in_redis(ohlcv, symbol,timeframe, r):
-    ts_key = f"{symbol}_ohlcv_{timeframe.value}"
-    print(ts_key)
-    ts_args = []
+def store_ohlcv_db(ohlcv,symbol,timeframe):
+    redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
+    try:
+        key = f'OHLCV_{symbol}_{str(timeframe)}'
+        price_data_old_json = redis_client.get(key)
+        if price_data_old_json is not None:
+            price_data_old = pd.read_json(price_data_old_json, orient='records')
 
-    # r.delete(ts_key)
-    if not r.exists(ts_key):
-        r.execute_command('TS.CREATE', ts_key, 'DUPLICATE_POLICY', 'FIRST')
+            price_data_old['timestamp'] = pd.to_datetime(price_data_old['timestamp'], utc=True)
+            ohlcv['timestamp'] = pd.to_datetime(ohlcv['timestamp'], utc=True)
+            # print(key,len(ohlcv),len(price_data_old),len(ohlcv)+len(price_data_old))
+            price_data_merge = pd.concat([price_data_old, ohlcv]).sort_values(by='timestamp')
+            # print(key,price_data_merge['timestamp'].iloc[-1],price_data_merge.shape)
+            price_data_merge['date'] = pd.to_datetime(price_data_merge['timestamp'],utc=True)
+            price_data_complete = price_data_merge.drop_duplicates(subset=['timestamp'], keep='last')
+            price_data_complete = price_data_complete.set_index(pd.DatetimeIndex(price_data_complete['date']))
 
-    for index, row in ohlcv.iterrows():
-        ts_key = f"{symbol}_ohlcv"
-        ts_timestamp = int(row['date'].timestamp())
-        ts_values = {
-            'open': row['open'],
-            'high': row['high'],
-            'low': row['low'],
-            'close': row['close'],
-            'volume': row['volume'],
-            'trade_count': row['trade_count'],
-            'vwap': row['vwap'],
-            'log_returns': row['log_returns'],
-            'vol_tc': row['vol_tc'],
-            'cvar': row['CVaR']
-        }
-        try:
-            r.execute_command('TS.ADD', ts_key, ts_timestamp, *ts_values.values())
-        except Exception as e:
-            continue
-    ts_info = r.execute_command('TS.INFO', ts_key)
-    print(ts_info)
+            # print(key,price_data_complete.shape)
+            price_data_complete_json = price_data_complete.to_json(orient='records')
+            redis_client.set(key,price_data_complete_json)
+        else:
+            price_data_complete_json = ohlcv.to_json(orient='records')
+            print(key,"new",ohlcv.shape)
+            redis_client.set(key,price_data_complete_json)
+        redis_client.close()
+    except Exception as e:
+        print(3573483,e)
+
+def retrieve_ohlcv_db(symbol,timeframe):
+    redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
+    try:
+        key = f'OHLCV_{symbol}_{str(timeframe)}'
+        price_data_old_json = redis_client.get(key)
+        redis_client.close()
+        if price_data_old_json is not None:
+            price_data_old = pd.read_json(price_data_old_json, orient='records')
+            price_data_old.drop_duplicates(keep='last',inplace=True)
+            return price_data_old
+        return pd.DataFrame()
+    except Exception as e:
+        print(e)
