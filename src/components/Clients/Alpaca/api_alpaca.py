@@ -62,10 +62,17 @@ class CustomTradingClient(TradingClient):
             expiry = f"20{expiry[:2]}-{expiry[2:4]}-{expiry[4:6]}"
             expiry_date = dt.datetime.strptime(expiry, "%Y-%m-%d")
             today_date = dt.datetime.today()
-            days_to_expiry = (expiry_date - today_date).days
+            days_to_expiry = (expiry_date - today_date).days+1 #TODO: Handle Zero error with contracts expiring day of
             option_type = "put" if option_type == 'P' else "call"
             return base_symbol,strike_price,days_to_expiry,option_type
         except Exception as e:
             pass
+
+    def adjustmentTimed(self,startValue=0.3,finalValue=1.0,startDate=dt.datetime(2024, 4, 26),period=60):
+        days_passed = min(max((dt.datetime.now() - startDate).days,1),period)
+        conversion = 365/252
+        increment_per_day = (finalValue - startValue) / (period * conversion)
+        intermediateValue = startValue + increment_per_day * days_passed
+        return intermediateValue
     
 api = CustomTradingClient()
