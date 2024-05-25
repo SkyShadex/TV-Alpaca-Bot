@@ -9,11 +9,13 @@ from alpaca.trading.requests import (ClosePositionRequest, GetOrdersRequest,
 import config
 from commons import vars
 from components.Clients.Alpaca.api_alpaca import api
+from components.Clients.Alpaca.portfolio import parse_positions
 import logging
 import redis
 import uuid
 import json
 import threading
+import pandas as pd
 
 
 # Declaring some variables
@@ -319,21 +321,21 @@ class SkyOrder:
             end_time (str): The end time of the order.
 
         """
-        self.order_id = str(uuid.uuid4())
+        self.order_id = str(f'ORDER-{uuid.uuid4()}')
         self.client = 'LIVE' if client is api.client['LIVE'] else 'DEV'
         self.symbol = symbol
         self.order_type = order_type
         self.asset_class = kwargs.get('asset_class', 'None')
         self.side = kwargs.get('side', 'None')
-        self.quantity = kwargs.get('quantity', 'None')
-        self.price = kwargs.get('price', 'None')
-        self.volume_limit = kwargs.get('volume_limit', 'None')
-        self.bet_size = kwargs.get('bet_size', 'None')
-        self.weight = kwargs.get('weight', 'None')
+        self.quantity = kwargs.get('quantity', 1.0)
+        self.price = kwargs.get('price', 0.0)
+        self.volume_limit = kwargs.get('volume_limit', 1)
+        self.bet_size = kwargs.get('bet_size', 1.0)
+        self.weight = kwargs.get('weight', 1.0)
         self.order_memo = kwargs.get('order_memo', 'None')
-        self.start_time = kwargs.get('start_time', 'None')
-        self.last_time = kwargs.get('last_time', 'None')
-        self.end_time = kwargs.get('end_time', 'None')
+        self.start_time = kwargs.get('start_time', 0)
+        self.next_time = kwargs.get('next_time', 0)
+        self.end_time = kwargs.get('end_time', 0)
         self.payload = self.to_dict()
 
     def to_dict(self):
@@ -357,7 +359,7 @@ class SkyOrder:
             'weight': self.weight,
             'order_memo': self.order_memo,
             'start_time': self.start_time,
-            'last_time': self.last_time,
+            'next_time': self.next_time,
             'end_time': self.end_time
         }
 
@@ -374,7 +376,6 @@ class ExecutionManager(threading.Thread):
     def __init__(self):
         super().__init__()
         self.redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
-        print("starting EM")
 
     def push_order_db(self,order: SkyOrder):
         order_id = order.order_id
@@ -395,21 +396,39 @@ class ExecutionManager(threading.Thread):
                 order_data = self.redis_client.hgetall(f'order:{order_id}')
                 if order_data:
                     # Process the order
+                    order_data['client'] = api.client['LIVE'] if order_data['client'] == 'LIVE' else api.client['DEV']
+                    self.update_holdings(order_data['client'])
                     self.execute_order(order_data)
 
-                    # Optionally, remove the processed order from Redis
-                    self.redis_client.delete(f'order:{order_id}')
+    def update_holdings(self,client):
+        pos_raw = client.get_all_positions()    
+        if not pos_raw:
+            return
+        
+        self.positions = parse_positions(pos_raw)
+        if self.positions.empty:
+            return
+        
+        posdf_json = self.positions.to_json(orient='records')
+        if client is api.client['DEV']:
+            self.redis_client.set('current_positions_DEV', posdf_json)
+        else:
+            self.redis_client.set('current_positions_LIVE', posdf_json)
 
     def execute_order(self, order_data):
         toDelete = True
-        order_data['client'] = api.client['LIVE'] if order_data['client'] == 'LIVE' else api.client['DEV']
 
         match order_data['order_type']:
             case "exit":
                 print(f"{order_data['order_type']}")
-                # print(f"Executing order: {order_data}")
+                print(f"Executing order: {order_data}")
+                # self.exitOrder(order_data)
                 pass
             case "market":
+                print(f"{order_data['order_type']}")
+                print(f"Executing order: {order_data}")
+                pass
+            case "limit":
                 print(f"{order_data['order_type']}")
                 print(f"Executing order: {order_data}")
                 pass
@@ -418,16 +437,40 @@ class ExecutionManager(threading.Thread):
                 print(f"Executing order: {order_data}")
                 pass
 
-        if toDelete:
-            return toDelete
-        else:
-
-            return toDelete, SkyOrder(client=None,symbol="None",order_type="None")
-
+        # if toDelete:
+        #     self.redis_client.delete(f'order:{order_data["order_id"]}')
     
     def exitOrder(self,order_data):
-        res = order_data['client'].close_position(order_data['symbol'],close_options=ClosePositionRequest(percentage=str(50)))
-        return res
+        toChildOrders = False
+        current_time = datetime.datetime.now().astimezone(pytz.timezone('US/Eastern'))
+        market_end = datetime.datetime.combine(current_time, datetime.time(16, 0)).astimezone(pytz.timezone('US/Eastern'))
+        minutes_remaining = (market_end - current_time).total_seconds() / 60
+        interval = 45  # e.g., minutes
+        intervals_remaining = minutes_remaining / interval
+        percentage_per_interval = min(50, 100 // intervals_remaining)
+
+        if order_data['start_time'] == 0.0:
+            order_data['start_time'] = current_time
+
+        # Determine if this is a child order and if it's ready to execute
+        if current_time < order_data['next_time']:
+            self.redis_client.rpush('order_queue', order_data['order_id'])
+            return
+
+        if order_data['symbol'] in self.positions.symbol.any():
+            pos = self.positions.loc[self.positions.symbol == order_data['symbol']].copy()
+            pos = pos.iloc[0]
+            toChildOrders = pos.market_value > 1000.0 and pos.qty_available > 1
+
+        if toChildOrders:
+            res = order_data['client'].close_position(order_data['symbol'],close_options=ClosePositionRequest(percentage=str(percentage_per_interval)))
+            order_data['next_time'] = current_time + datetime.timedelta(minutes=interval)
+            self.redis_client.hset(f'order:{order_data["order_id"]}', mapping = order_data)
+            self.redis_client.rpush('order_queue', order_data['order_id'])
+            return
+        
+        order_data['client'].close_position(order_data['symbol'])
+        self.redis_client.delete(f'order:{order_data["order_id"]}')
 
 execution_manager = ExecutionManager()
 order_thread = threading.Thread(target=execution_manager.process_orders)
