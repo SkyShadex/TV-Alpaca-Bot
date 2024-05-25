@@ -10,6 +10,10 @@ import config
 from commons import vars
 from components.Clients.Alpaca.api_alpaca import api
 import logging
+import redis
+import uuid
+import json
+import threading
 
 
 # Declaring some variables
@@ -289,3 +293,142 @@ def entryOrderProd(symbol,price,orderID,side='buy',isMarketOrder=False,weight=1.
     logging.info(f"{entryOrderProd.__name__} {response}")
     res = client.submit_order(orderData)
     return res
+
+class SkyOrder:
+    def __init__(self, client, symbol: str, order_type: str, **kwargs):
+        """
+        Initialize a SkyOrder object.
+
+        Args:
+            client (str): The client placing the order.
+            symbol (str): The symbol for the asset.
+            order_type (str): The type of the order (e.g., 'limit', 'market').
+            **kwargs: Additional optional parameters.
+
+        Keyword Args:
+            asset_class (str): The asset class (e.g., 'equity').
+            side (str): The side of the order ('buy' or 'sell').
+            quantity (int): The quantity of the order.
+            price (float): The price of the order.
+            volume_limit (float): The max volume for order.
+            bet_size (float): The max cash allotted to order.
+            weight (float): The final weight modified for order.
+            order_memo (str): A memo or note for the order.
+            start_time (str): The start time of the order.
+            last_time (str): The last update time of the order.
+            end_time (str): The end time of the order.
+
+        """
+        self.order_id = str(uuid.uuid4())
+        self.client = 'LIVE' if client is api.client['LIVE'] else 'DEV'
+        self.symbol = symbol
+        self.order_type = order_type
+        self.asset_class = kwargs.get('asset_class', 'None')
+        self.side = kwargs.get('side', 'None')
+        self.quantity = kwargs.get('quantity', 'None')
+        self.price = kwargs.get('price', 'None')
+        self.volume_limit = kwargs.get('volume_limit', 'None')
+        self.bet_size = kwargs.get('bet_size', 'None')
+        self.weight = kwargs.get('weight', 'None')
+        self.order_memo = kwargs.get('order_memo', 'None')
+        self.start_time = kwargs.get('start_time', 'None')
+        self.last_time = kwargs.get('last_time', 'None')
+        self.end_time = kwargs.get('end_time', 'None')
+        self.payload = self.to_dict()
+
+    def to_dict(self):
+        """
+        Convert the SkyOrder object to a dictionary.
+
+        Returns:
+            dict: The order details as a dictionary.
+        """
+        return {
+            'order_id': self.order_id,
+            'client' : self.client,
+            'symbol': self.symbol,
+            'asset_class' : self.asset_class,
+            'order_type': self.order_type,
+            'side' : self.side,
+            'quantity': self.quantity,
+            'price': self.price,
+            'volume_limit': self.volume_limit,
+            'bet_size': self.bet_size,
+            'weight': self.weight,
+            'order_memo': self.order_memo,
+            'start_time': self.start_time,
+            'last_time': self.last_time,
+            'end_time': self.end_time
+        }
+
+    def to_json(self):
+        """
+        Convert the SkyOrder object to a JSON string.
+
+        Returns:
+            str: The order details as a JSON string.
+        """
+        return json.dumps(self.to_dict())
+
+class ExecutionManager(threading.Thread):
+    def __init__(self):
+        super().__init__()
+        self.redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
+        print("starting EM")
+
+    def push_order_db(self,order: SkyOrder):
+        order_id = order.order_id
+        order_data = order.to_dict()
+        
+        # Push the order ID to the list
+        self.redis_client.rpush('order_queue', order_id)
+        
+        # Store the order details in a hash
+        self.redis_client.hset(f'order:{order_id}', mapping = order_data)
+
+    def process_orders(self):
+        while True:
+            # Pop an order ID from the front of the list
+            order_id = self.redis_client.lpop('order_queue')
+            if order_id:
+                # Retrieve the order details from the hash
+                order_data = self.redis_client.hgetall(f'order:{order_id}')
+                if order_data:
+                    # Process the order
+                    self.execute_order(order_data)
+
+                    # Optionally, remove the processed order from Redis
+                    self.redis_client.delete(f'order:{order_id}')
+
+    def execute_order(self, order_data):
+        toDelete = True
+        order_data['client'] = api.client['LIVE'] if order_data['client'] == 'LIVE' else api.client['DEV']
+
+        match order_data['order_type']:
+            case "exit":
+                print(f"{order_data['order_type']}")
+                # print(f"Executing order: {order_data}")
+                pass
+            case "market":
+                print(f"{order_data['order_type']}")
+                print(f"Executing order: {order_data}")
+                pass
+            case _:
+                print(f"{order_data['order_type']}")
+                print(f"Executing order: {order_data}")
+                pass
+
+        if toDelete:
+            return toDelete
+        else:
+
+            return toDelete, SkyOrder(client=None,symbol="None",order_type="None")
+
+    
+    def exitOrder(self,order_data):
+        res = order_data['client'].close_position(order_data['symbol'],close_options=ClosePositionRequest(percentage=str(50)))
+        return res
+
+execution_manager = ExecutionManager()
+order_thread = threading.Thread(target=execution_manager.process_orders)
+order_thread.start()
