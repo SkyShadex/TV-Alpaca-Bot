@@ -1,5 +1,6 @@
 import json
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import os
 import time
 import queue
@@ -13,7 +14,7 @@ import tracemalloc
 import warnings
 import numpy as np
 from alpaca.common import exceptions
-# import alpaca_trade_api as tradeapi
+
 from alpaca.trading.models import Order
 from alpaca.trading.requests import GetOrdersRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
@@ -32,14 +33,12 @@ import components.Clients.MetaTrader.mt5_server as mt5
 from components.techanalysis import screener
 from components.Clients.Alpaca import DataAnalysis as da
 from components.Clients.Alpaca.Strategy.StrategyManager import StrategyManager
-from components.Clients.Alpaca.price_data import get_ohlc_alpaca, store_ohlcv_in_redis
-from components.Clients.Alpaca.options import AlpacaOptionContracts
 from flask_apscheduler import APScheduler
 
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, filename="logs/py_log.log",filemode="a",format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
-redis_client = redis.Redis(host=config.DB_HOST, port=config.DB_PORT, decode_responses=True)
+redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
 # Declaring some variables
@@ -51,7 +50,7 @@ s = None
 
 manager_scheduler = APScheduler()
 scheduler = APScheduler()
-crypto_Schedule = APScheduler()
+# crypto_Schedule = APScheduler()
 warnings.simplefilter('ignore', np.RankWarning)
 
 def run_strat():
@@ -74,7 +73,6 @@ def run_hedge():
 #     pm.rebalance(client=client)
 #     # opt = StrategyManager("OOI")
 
-
 def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
 
     if TradingHours:
@@ -88,20 +86,22 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
         manager_scheduler.add_job(id='reset_orders_1', func=api.prod.cancel_orders, trigger='cron', day_of_week='mon-fri', hour=8, minute=0, misfire_grace_time = None)
         manager_scheduler.add_job(id='reset_orders', func=api.cancel_orders, trigger='cron', day_of_week='mon-fri', hour=8, minute=0, misfire_grace_time = None)
 
-    if portfolio:
-        if onInit:
+    if portfolio[0]:
+        if portfolio[1]:
             scheduler.add_job(id='managePNL_init', func=managePNL)
             scheduler.add_job(id='hedgeStrat_init', func=run_hedge)
-            # scheduler.add_job(id='rebalance_devtest', func=reversalDCA, args=[api.client['LIVE'],0.4])
-        scheduler.add_job(id='managePNL_loop', func=managePNL, trigger='cron', day_of_week='mon-fri', minute='*/10', start_date='2024-03-25 08:15:00')
-        scheduler.add_job(id='rebalance_Dev', func=reversalDCA, trigger='cron', day_of_week='mon-fri', hour=13, minute=31, misfire_grace_time = None)
+            # scheduler.add_job(id='options_metrics_init', func=da.calcPerformance)
+            # scheduler.add_job(id='rebalance_devtest', func=reversalDCA, args=[api.client['LIVE']])
+        scheduler.add_job(id='managePNL_loop', func=managePNL, trigger='cron', day_of_week='mon-fri', minute='*/10', start_date='2024-03-25 13:15:00')
         scheduler.add_job(id='options_metrics', func=da.calcPerformance, trigger='cron', day_of_week='mon-fri', hour=20, misfire_grace_time = None)
-        # scheduler.add_job(id='rebalance_Prod', func=reversalDCA, args=[api.client['LIVE'],0.4], trigger='cron', day_of_week='mon-fri', hour=19, misfire_grace_time = None)
+        scheduler.add_job(id='rebalance_Dev', func=reversalDCA, trigger='cron', day_of_week='mon-fri', hour=13, minute=31, misfire_grace_time = None)  
+        scheduler.add_job(id='rebalance_Prod', func=reversalDCA, args=[api.client['LIVE']], trigger='cron', day_of_week='mon-fri', hour=19, misfire_grace_time = None)
         # scheduler.add_job(id='rebalance_job_1', func=alpaca_rebalance, trigger='interval', minutes=1, start_date='2024-03-25 08:05:00')
 
-    if options:
+    if options[0]:
         if onInit:
             scheduler.add_job(id='optionsStrat_init', func=run_opt)
+        scheduler.add_job(id='hedgeStrat_loop', func=run_hedge, trigger='cron', day_of_week='mon-fri', hour='*/4', start_date='2024-03-25 13:40:00', misfire_grace_time = None)
         scheduler.add_job(id='optionsStrat_loop', func=run_opt, trigger='cron', day_of_week='mon-fri', minute='*/10', start_date='2024-03-25 08:05:00', max_instances=2)
 
     if equities:
@@ -123,7 +123,7 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
 start.startMessage(api.prod.get_account().buying_power, api.prod.get_account().non_marginable_buying_power, api.prod.get_account().daytrade_count) # type: ignore
 start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count)
 
-manageSchedules(TradingHours=True,OrderReset=False,equities=True,options=True,portfolio=True,onInit=True)    
+manageSchedules(TradingHours=True,OrderReset=True,equities=True,options=[True,True],portfolio=[True,True],onInit=True)    
 
 def check_alpaca_status():
     if not api.check_alpaca_status():
@@ -137,7 +137,7 @@ def fetch_orders():
     return orders
 
 def fetch_account_info():
-    return accountInfo
+    return api.get_account()
 
 # Flask Routes
 @app.route('/')
@@ -163,8 +163,8 @@ def portDisplay():
     portfolio_plot = 'portfolioperformance.png'
     asset_plot = 'assetperformance.png'
     portfolio.graph(plot_filename=portfolio_plot)
-    da.dataCrunch(plot_filename=asset_plot)
-    return render_template('portfolio.html', portfolio_plot=portfolio_plot, asset_plot=asset_plot)
+    # da.dataCrunch(plot_filename=asset_plot)
+    return render_template('portfolio.html', portfolio_plot=portfolio_plot, asset_plot=portfolio_plot)
 
 file_path = 'logs/data.txt'
 lock_file_path = 'logs/lock.txt'
@@ -224,74 +224,74 @@ def get_file_content():
     with open(file_path, 'r') as file:
         return file.read()
 
-@app.route('/mt5client', methods=['GET'])
-def mt5client():
-    # Check if there are orders available
-    data = redis_client.lpop('orderHold')
-    if data is None or True:
-        #olddata = get_file_content()
-        olddata = "No Order Found"
-        response = {'message': olddata}
-        return jsonify(response), 404
-    else:
-        response = {'file_content': data}
-        return jsonify(response), 200
+# @app.route('/mt5client', methods=['GET'])
+# def mt5client():
+#     # Check if there are orders available
+#     data = redis_client.lpop('orderHold')
+#     if data is None or True:
+#         #olddata = get_file_content()
+#         olddata = "No Order Found"
+#         response = {'message': olddata}
+#         return jsonify(response), 404
+#     else:
+#         response = {'file_content': data}
+#         return jsonify(response), 200
 
-def orderResults(webhook_message,side_WH):
-    try:
-        response = executionManager.executeOrder(webhook_message)
+# def orderResults(webhook_message,side_WH):
+#     try:
+#         response = executionManager.executeOrder(webhook_message)
 
-        if isinstance(response, Order):
-            orderInfo = vars.extract_order_response(response)
-            content = f"Alpaca: Order executed successfully -|- {orderInfo['qty']} units of {orderInfo['symbol']} -|- Timestamp: {orderInfo['submitted_at']}"
-            discord.message(content)
-            logging.info(content)
-            return jsonify(message='Order executed successfully!', orderInfo=orderInfo)
+#         if isinstance(response, Order):
+#             orderInfo = vars.extract_order_response(response)
+#             content = f"Alpaca: Order executed successfully -|- {orderInfo['qty']} units of {orderInfo['symbol']} -|- Timestamp: {orderInfo['submitted_at']}"
+#             discord.message(content)
+#             logging.info(content)
+#             return jsonify(message='Order executed successfully!', orderInfo=orderInfo)
 
-    # Error Handling
-    except exceptions.APIError as e: 
-        error_message = f"Alpaca Error: {str(e)} for {side_WH} order"
-        discord.message(error_message)
+#     # Error Handling
+#     except exceptions.APIError as e: 
+#         error_message = f"Alpaca Error: {str(e)} for {side_WH} order"
+#         discord.message(error_message)
 
-        good_errors = ["position not found", "order not found", "is not active", "asset not found", "not tradable", "insufficient balance for USD"]
-        if any(error in str(e) for error in good_errors):
-            return jsonify(error=error_message), 200
-        else:
-            return jsonify(error=error_message), 500
+#         good_errors = ["position not found", "order not found", "is not active", "asset not found", "not tradable", "insufficient balance for USD"]
+#         if any(error in str(e) for error in good_errors):
+#             return jsonify(error=error_message), 200
+#         else:
+#             return jsonify(error=error_message), 500
 
-@app.route('/webhook', methods=['POST']) # type: ignore
-def webhook():
-    payload = request.data.decode("utf-8")
-    start_index = payload.find('{')
-    end_index = payload.rfind('}')
+# @app.route('/webhook', methods=['POST']) # type: ignore
+# def webhook():
+#     payload = request.data.decode("utf-8")
+#     start_index = payload.find('{')
+#     end_index = payload.rfind('}')
 
-    if start_index == -1 or end_index == -1 or end_index <= start_index:
-        return {'code': 'error', 'message': 'Invalid payload'}
-    extrainfo = payload[:start_index].strip()
-    cleaned_payload = payload[start_index:end_index+1]
+#     if start_index == -1 or end_index == -1 or end_index <= start_index:
+#         return {'code': 'error', 'message': 'Invalid payload'}
+#     extrainfo = payload[:start_index].strip()
+#     cleaned_payload = payload[start_index:end_index+1]
 
-    webhook_message = json.loads(cleaned_payload)
+#     webhook_message = json.loads(cleaned_payload)
 
-    #logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
-    #logging.info('Webhook message received: %s', webhook_message)
+#     #logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
+#     #logging.info('Webhook message received: %s', webhook_message)
 
-    if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
-        return {'code': 'error', 'message': 'nice try buddy'}
+#     if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
+#         return {'code': 'error', 'message': 'nice try buddy'}
     
-    if "mt5" in extrainfo:
-        with buffer_lock:
-            post_buffer.put(webhook_message)
-            response = "Request Buffered."
-            return jsonify(response), 200
+#     if "mt5" in extrainfo:
+#         with buffer_lock:
+#             post_buffer.put(webhook_message)
+#             response = "Request Buffered."
+#             return jsonify(response), 200
 
-    symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, stratID_WH = vars.webhook(
-        webhook_message)
-    content = f"Strategy Alert: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {stratID_WH}"
-    discord.message(content)
+#     symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, stratID_WH = vars.webhook(
+#         webhook_message)
+#     content = f"Strategy Alert: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {stratID_WH}"
+#     discord.message(content)
 
-    with order_lock:
-        orderResults(webhook_message,side_WH)
+#     with order_lock:
+#         orderResults(webhook_message,side_WH)
 
 if __name__ == '__main__':
-    app.run(host=config.LOCAL_HOST, port=config.LOCAL_PORT, debug=False)
+    app.run(host=config.LOCAL_HOST, port=int(str(config.LOCAL_PORT)), debug=False)
     post_thread.start()
