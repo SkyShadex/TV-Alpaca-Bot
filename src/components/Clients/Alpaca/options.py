@@ -166,12 +166,12 @@ class AlpacaOptionContracts:
         df['days_to_expiry'] = ((df['expiration_date'] - current_date).dt.days).round()
         df['days_to_expiry'] = df['days_to_expiry'].astype(int)
         try:
-            underlying = get_ohlc_alpaca(df['underlying_symbol'].iloc[-1],365,adjust="all",date_err=False)
+            underlying = get_ohlc_alpaca(df['underlying_symbol'].iloc[-1],lookback=365,adjust="all",date_err=False)
         except Exception as e:
             raise RuntimeError(f"Missing Underlying Price Data for {df['underlying_symbol'].iloc[-1]}\n{e}")
         df['underlying_price'] = underlying['close'].iloc[-1]
         df['underlying_price_2'] = underlying['close'].iloc[-7]
-        df['ul_vol'] = underlying['close'].pct_change().std()
+        df['ul_vol'] = underlying['close'].pct_change().std()*np.sqrt(365)
         df.loc[df['type'] == 'put', 'moneyness'] = np.log((df['strike_price'])/df['underlying_price']) * 100
         df.loc[df['type'] == 'call', 'moneyness'] = np.log(df['underlying_price']/(df['strike_price'])) * 100
         
