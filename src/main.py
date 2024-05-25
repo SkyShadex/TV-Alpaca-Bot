@@ -39,6 +39,7 @@ from flask_apscheduler import APScheduler
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, filename="logs/py_log.log",filemode="a",format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
 redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
+redis_client.bgsave()
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
 # Declaring some variables
@@ -123,7 +124,7 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
 start.startMessage(api.prod.get_account().buying_power, api.prod.get_account().non_marginable_buying_power, api.prod.get_account().daytrade_count) # type: ignore
 start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count)
 
-manageSchedules(TradingHours=True,OrderReset=True,equities=True,options=[True,True],portfolio=[True,True],onInit=True)    
+manageSchedules(TradingHours=True,OrderReset=False,equities=True,options=[True,True],portfolio=[True,True],onInit=True)    
 
 def check_alpaca_status():
     if not api.check_alpaca_status():
