@@ -5,6 +5,7 @@ import threading
 import datetime as dt
 from pytz import timezone
 import re
+import pandas as pd
 
 class CustomTradingClient(TradingClient):
 
@@ -18,14 +19,17 @@ class CustomTradingClient(TradingClient):
     def __init__(self):
         if not hasattr(self, 'initialized'):
             super().__init__(config.API_KEY, config.API_SECRET, paper=True)
-            # self.rate_limit_lock = threading.Lock()
             # self.dev = TradingClient(config.API_KEY, config.API_SECRET, paper=True)
             self.prod = TradingClient(config.API_KEY_PROD, config.API_SECRET_PROD, paper=False)
             self.client = {
                 'DEV': self,  # Reference to the default 'dev' account
                 'LIVE': self.prod
-            }
+                }
             self.initialized = True
+
+            # self.clientDF = pd.DataFrame()
+            # self.clientDF['DEV'] = self
+            
 
     def check_alpaca_status(self):
         try:
