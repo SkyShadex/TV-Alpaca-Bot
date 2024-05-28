@@ -39,7 +39,7 @@ from flask_apscheduler import APScheduler
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, filename="logs/py_log.log",filemode="a",format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
 redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
-redis_client.bgsave()
+# redis_client.bgsave()
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
 # Declaring some variables
@@ -75,7 +75,6 @@ def run_hedge():
 #     # opt = StrategyManager("OOI")
 
 def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
-
     if TradingHours:
         manager_scheduler.add_job(id='bod', func=scheduler.resume, trigger='cron', day_of_week='mon-fri', hour=8, minute=0, misfire_grace_time = None)
         manager_scheduler.add_job(id='eod', func=scheduler.pause, trigger='cron', day_of_week='mon-fri', hour=20, minute=5,misfire_grace_time = None)
@@ -92,7 +91,7 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
             scheduler.add_job(id='managePNL_init', func=managePNL)
             scheduler.add_job(id='hedgeStrat_init', func=run_hedge)
             # scheduler.add_job(id='options_metrics_init', func=da.calcPerformance)
-            # scheduler.add_job(id='rebalance_devtest', func=reversalDCA, args=[api.client['LIVE']])
+            # scheduler.add_job(id='rebalance_devtest', func=reversalDCA, args=[api.client['DEV']])
         scheduler.add_job(id='managePNL_loop', func=managePNL, trigger='cron', day_of_week='mon-fri', minute='*/10', start_date='2024-03-25 13:15:00')
         scheduler.add_job(id='options_metrics', func=da.calcPerformance, trigger='cron', day_of_week='mon-fri', hour=20, misfire_grace_time = None)
         scheduler.add_job(id='rebalance_Dev', func=reversalDCA, trigger='cron', day_of_week='mon-fri', hour=13, minute=31, misfire_grace_time = None)  
@@ -122,7 +121,7 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
 
 
 start.startMessage(api.prod.get_account().buying_power, api.prod.get_account().non_marginable_buying_power, api.prod.get_account().daytrade_count) # type: ignore
-start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count)
+start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count) # type: ignore
 
 manageSchedules(TradingHours=True,OrderReset=False,equities=True,options=[True,True],portfolio=[True,True],onInit=True)    
 
