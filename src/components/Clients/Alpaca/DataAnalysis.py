@@ -53,7 +53,7 @@ def collectActivity():
 
     df = pd.DataFrame(activities)
     if not df.empty:
-        df['transaction_time'] = pd.to_datetime(df['transaction_time'])
+        df['transaction_time'] = pd.to_datetime(df['transaction_time'],utc=True)
         df.set_index('transaction_time', inplace=True)
         return df
     else:
@@ -219,7 +219,7 @@ def collectOrders():
             
             # Update the until_date for the next iteration
             if df_data:
-                created_at_values = pd.to_datetime([order['created_at'] for order in df_data])
+                created_at_values = pd.to_datetime([order['created_at'] for order in df_data],utc=True)
                 until_date = min(created_at_values)
             else:
                 # If there are no orders in the current batch, break the loop
