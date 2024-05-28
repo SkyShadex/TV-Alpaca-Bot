@@ -67,37 +67,59 @@ def get_latest_quote(symbol,mode='equity'):
         quote['spread_pc'] = 1-np.log(quote['bid_price']/quote['ask_price'])
         return quote
     
-def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day')),adjust="split",date_err=True):
+def get_ohlc_alpaca(symbols: str|list[str], lookback: int, timeframe: TimeFrame=TimeFrame(1, TimeFrameUnit('Day')),adjust: str="split",date_err: bool=True,useCache: bool=True):
+    """
+        Wrapper for getting price data. Currently just for Stocks and Crypto, not Options.
+
+        Args:
+            symbol (str): The symbol for the asset.
+            lookback (int): Number of days to look back from Current Date (Currently Localized to EST).
+            timeframe: TimeFrame object from Alpaca. See Alpaca Docs.
+            adjust (str): The type of corporate action data normalization.
+            date_err (bool): Reject symbols that don't return nearly complete data set. Default set to True.
+            useCache (bool): Use RedisDB to cache price data to reduce API calls. Default set to True.
+        """
     NY_TIMEZONE = pytz.timezone('America/New_York')
-    current_date = pd.Timestamp.now(tz=NY_TIMEZONE)
+    UTC_TIMEZONE = pytz.timezone('UTC')
+    current_date = pd.Timestamp.now(tz=UTC_TIMEZONE)
     oldFound = False
+    loopSymbols = False
     sleep_duration = 0
-    # Ensure symbols is always treated as a list
-    if isinstance(symbols, pd.Series):
+    tf = str(timeframe)
+
+    if isinstance(symbols, (pd.Series,list)):
+        loopSymbols = True
+        useCache = False
         symCount = len(symbols)
+        print(get_ohlc_alpaca.__name__,82303579834986) # TODO: Check if this is being used as a pd/list anywhere????
         if symCount >= 200:
             sleep_duration = 200 // 60
             print(f'Est. Time: {(sleep_duration*symCount)//60}mins')
     else:
-        symbols = [symbols]
+        symbols = [symbols] # Ensure symbols is always treated as a list
         symCount = len(symbols)
-        old_price_data = retrieve_ohlcv_db(symbols[0],timeframe)
-        if len(old_price_data) > 1500:
-            lookback = 30
-            oldFound = True
-            date_err = False
-        else:
-            lookback = 365*10
-            date_err = False
+        if useCache:
+            old_price_data = retrieve_ohlcv_db(symbols[0],timeframe)
+            if not old_price_data.empty:
+                daterange = (old_price_data['date'].max() - old_price_data['date'].min()).days
+                if daterange >= 100:
+                    logging.debug(f'OHLCV_{symbols[0]}_{str(timeframe)} [CACHED]',daterange)
+                    lookback = min(10,lookback)
+                    oldFound = True
+                    date_err = False
+                else:
+                    print(f'OHLCV_{symbols[0]}_{str(timeframe)} [NEW]',daterange)
+                    lookback = 365*3 if tf.endswith("Day") else int(365*1.5)
+                    date_err = False
     
     all_ohlcv = []
     all_value_at_risk = {}
-    skipped = 0
+    skipped_symbols = []
 
     start_date = current_date - dt.timedelta(days=lookback)           
     for i, symbol in enumerate(symbols):
-        percent_complete = (i + 1) / symCount * 100
-        if symCount > 1:
+        if symCount > 1 and loopSymbols:
+            percent_complete = (i + 1) / symCount * 100
             print(f"Progress: {percent_complete:.2f}% complete {symbol}", flush=True)
             time.sleep(sleep_duration)
 
@@ -106,12 +128,16 @@ def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day
         if isCrypto:
             params = CryptoBarsRequest(symbol_or_symbols=symbol, start=start_date, timeframe=timeframe)
             price_data = apCrypto.get_crypto_bars(params)
-            # print(asset.asset_class,symbol)
         else:    
             params = StockBarsRequest(symbol_or_symbols=symbol, start=start_date, timeframe=timeframe, adjustment=adjust)
             price_data = apHist.get_stock_bars(params)
-            
+
         ohlcv = price_data.df
+
+        if not isinstance(ohlcv,pd.DataFrame):
+            raise Exception(f"Expected Dataframe from Alpaca: {symbol}")    
+        if len(ohlcv) <= 1:
+            raise Exception(f"Insufficient Bar Data: [{symbol},{len(ohlcv)}]")    
 
         numeric_columns = ['open', 'high', 'low', 'close', 'volume', 'trade_count', 'vwap']
         ohlcv[numeric_columns] = ohlcv[numeric_columns].apply(pd.to_numeric, errors='raise')
@@ -120,8 +146,9 @@ def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day
         ohlcv = ohlcv.drop_duplicates(keep='first')
         ohlcv['symbol'] = symbol
         ohlcv['log_returns'] = np.log(ohlcv['close']).diff()
+        ohlcv['freq'] = tf
         ohlcv['log_returns'] = ohlcv['log_returns'].fillna(0)
-        ohlcv['vol_tc'] = ohlcv['volume'] / ohlcv['trade_count'] # divide by zero???
+        # ohlcv['vol_tc'] = ohlcv['volume'] / ohlcv['trade_count'] # divide by zero???
 
         value_at_risk = ohlcv['log_returns'].quantile(0.05)
         losses_below_var = ohlcv[ohlcv['log_returns'] < value_at_risk]['log_returns']
@@ -129,82 +156,91 @@ def get_ohlc_alpaca(symbols, lookback, timeframe=TimeFrame(1, TimeFrameUnit('Day
         all_value_at_risk[symbol] = value_at_risk
 
         try:
-            ohlcv['date'] = pd.to_datetime(ohlcv['timestamp'])
-            ohlcv = ohlcv.set_index(pd.DatetimeIndex(ohlcv['date']))
+            ohlcv['date'] = pd.to_datetime(ohlcv['timestamp'],utc=True)
+            ohlcv.set_index(pd.DatetimeIndex(ohlcv['date'],tz=UTC_TIMEZONE),inplace=True)
+            ohlcv.sort_index(inplace=True)
         except Exception as e:
-            logging.warning(e)
-            raise e
+            raise
 
         if ohlcv.isin([np.inf, -np.inf, np.nan]).any().any() and not isCrypto:
-            skipped += 1
-            # print("Exogenous variable contains 'inf' or 'NaN' values.")
+            print(ohlcv.isin([np.inf, -np.inf, np.nan]).any().any())
+            skipped_symbols.append(symbol)
+            logging.warning("Exogenous variable contains 'inf' or 'NaN' values.")
             continue 
-            # raise ValueError("Exogenous variable contains 'inf' or 'NaN' values.")
 
         days_collected = (ohlcv['date'].max() - ohlcv['date'].min()).days
         if days_collected <= lookback*0.95 and symCount > 1 and date_err:         # Filter Out Incomplete Data
-            skipped += 1
-            # print("Incomplete data")
+            skipped_symbols.append(symbol)
+            logging.warning(f"Expected {lookback*0.95:.0f} days of data, received {days_collected}")
             continue 
         
         all_ohlcv.append(ohlcv)
-        # print(f'append: {symbol} {len(all_ohlcv)}')
-        
-        
-    # if skipped != 0:
-    #     print(f'symbols skipped: {skipped}')
+     
+    if len(skipped_symbols) != 0:
+        logging.warning(f'symbols skipped: {skipped_symbols}')
+
     if len(all_ohlcv) == 1:  # Single symbol request
+        if not useCache:
+            return all_ohlcv[0]
         if oldFound:
-            all_ohlcv = pd.concat([old_price_data,all_ohlcv[0]])
-            all_ohlcv.drop_duplicates(keep='last',inplace=True)
-            store_ohlcv_db(all_ohlcv,all_ohlcv.iloc[0].symbol,timeframe)
-            return all_ohlcv
-        store_ohlcv_db(all_ohlcv[0],all_ohlcv[0].iloc[0].symbol,timeframe)
-        return all_ohlcv[0]
+            new_df = pd.concat([old_price_data,all_ohlcv[0]])
+            new_df.set_index(pd.DatetimeIndex(new_df['date'],tz=UTC_TIMEZONE),inplace=True)
+            new_df.drop_duplicates(keep='last',inplace=True)
+            new_df.sort_index(inplace=True)
+            return store_ohlcv_db(new_df,new_df.iloc[0].symbol,timeframe)
+        return store_ohlcv_db(all_ohlcv[0],all_ohlcv[0].iloc[0].symbol,timeframe)
     elif len(all_ohlcv) == 0:
         raise RuntimeError("No valid data returned")
-    else:
-        return pd.concat(all_ohlcv)
+
+    return pd.concat(all_ohlcv)
     
 
-def store_ohlcv_db(ohlcv,symbol,timeframe):
+def store_ohlcv_db(ohlcv,symbol,timeframe,cached=True):
     redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
+    KEY = f'OHLCV_{symbol}_{str(timeframe)}'
+    UTC_TIMEZONE = pytz.timezone('UTC')
     try:
-        key = f'OHLCV_{symbol}_{str(timeframe)}'
-        price_data_old_json = redis_client.get(key)
+        price_data_old_json = redis_client.get(KEY)
         if price_data_old_json is not None:
             price_data_old = pd.read_json(price_data_old_json, orient='records')
 
-            price_data_old['timestamp'] = pd.to_datetime(price_data_old['timestamp'], utc=True)
-            ohlcv['timestamp'] = pd.to_datetime(ohlcv['timestamp'], utc=True)
-            # print(key,len(ohlcv),len(price_data_old),len(ohlcv)+len(price_data_old))
-            price_data_merge = pd.concat([price_data_old, ohlcv]).sort_values(by='timestamp')
-            # print(key,price_data_merge['timestamp'].iloc[-1],price_data_merge.shape)
-            price_data_merge['date'] = pd.to_datetime(price_data_merge['timestamp'],utc=True)
-            price_data_complete = price_data_merge.drop_duplicates(subset=['timestamp'], keep='last')
-            price_data_complete = price_data_complete.set_index(pd.DatetimeIndex(price_data_complete['date']))
-
-            # print(key,price_data_complete.shape)
+            # price_data_old['timestamp'] = pd.to_datetime(price_data_old['timestamp'], utc=True)
+            # ohlcv['timestamp'] = pd.to_datetime(ohlcv['timestamp'], utc=True)
+            price_data_complete = pd.concat([price_data_old, ohlcv])
+            price_data_complete['date'] = pd.to_datetime(price_data_complete['timestamp'],utc=True)
+            price_data_complete.set_index(pd.DatetimeIndex(price_data_complete['date'],tz=UTC_TIMEZONE),inplace=True)
+            price_data_complete.drop_duplicates(subset=['timestamp'], keep='last',inplace=True)
+            price_data_complete.sort_index(inplace=True)
             price_data_complete_json = price_data_complete.to_json(orient='records')
-            redis_client.set(key,price_data_complete_json)
+            redis_client.set(KEY,price_data_complete_json,ex=12*3600)
+            ohlcv_new = price_data_complete.copy()
         else:
             price_data_complete_json = ohlcv.to_json(orient='records')
-            print(key,"new",ohlcv.shape)
-            redis_client.set(key,price_data_complete_json)
+            redis_client.set(KEY,price_data_complete_json,ex=12*3600)
+            ohlcv_new = ohlcv.copy()
         redis_client.close()
-    except Exception as e:
-        print(3573483,e)
+        return ohlcv_new.sort_index()
+    except (KeyError,ValueError,TypeError,Exception) as e:
+        error_message = f'[{store_ohlcv_db.__name__}] Error for {KEY}: {e}'
+        logging.warning(error_message)
+        redis_client.delete(KEY)
+        raise Exception(error_message) 
 
 def retrieve_ohlcv_db(symbol,timeframe):
     redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
+    KEY = f'OHLCV_{symbol}_{str(timeframe)}'
+    UTC_TIMEZONE = pytz.timezone('UTC')
     try:
-        key = f'OHLCV_{symbol}_{str(timeframe)}'
-        price_data_old_json = redis_client.get(key)
-        redis_client.close()
+        price_data_old_json = redis_client.get(KEY)
         if price_data_old_json is not None:
             price_data_old = pd.read_json(price_data_old_json, orient='records')
+            price_data_old['date'] = pd.to_datetime(price_data_old['timestamp'],utc=True)
             price_data_old.drop_duplicates(keep='last',inplace=True)
+            price_data_old.set_index(pd.DatetimeIndex(price_data_old['date'],tz=UTC_TIMEZONE),inplace=True)
             return price_data_old
         return pd.DataFrame()
-    except Exception as e:
-        print(e)
+    except (KeyError,ValueError,TypeError,Exception) as e:
+        error_message = f'[{retrieve_ohlcv_db.__name__}] Error for {KEY}: {e}'
+        logging.warning(error_message)
+        redis_client.delete(KEY)
+        raise Exception(error_message)
