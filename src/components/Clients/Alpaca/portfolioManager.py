@@ -2,7 +2,7 @@ from alpaca.trading.requests import GetOrdersRequest, MarketOrderRequest
 from alpaca.trading.models import TradeAccount
 from components.Clients.Alpaca.api_alpaca import api
 from components.Clients.Alpaca.portfolio import parse_positions
-from components.Clients.Alpaca.executionManager import exitOrder,optionsOrder
+from components.Clients.Alpaca.executionManager import exitOrder,optionsOrder,execution_manager,SkyOrder
 from components.Clients.Alpaca.Strategy.OptionsOI import Strategy_PricingModel
 from components.Clients.Alpaca.price_data import get_latest_quote
 from pytz import timezone
@@ -63,116 +63,124 @@ initialize_globals()
 #             print(f"Updating: {currentDate} {current_equity}")
 
 def managePNL():
-    if not api.trading_hours():print('trading blockout hours');return
-    
-    print(f'Portfolio Check Start...')
     starttime = dt.datetime.now()
-
-    for id,client in api.client.items():
-        pos_raw = client.get_all_positions()
-        if not pos_raw:continue
-
-        pos = parse_positions(pos_raw)
-        if pos.empty:continue
-
-        if not api.trading_hours(resume_time=9,pause_time=16):continue
-
-        manageOptions(client,pos)
-
+    try:
+        if not api.trading_hours():print('trading blockout hours');return
         
-    elapsed_time = (dt.datetime.now() - starttime).total_seconds() // 60
-    print(f'Portfolio Check complete ({elapsed_time} mins)...')
-    
+        print(f'Portfolio Check Start...')
+        
 
-def manageOptions(client,pos):
-    positions=pos.loc[
-        (pos['asset_class'].str.contains("us_option",case=False)) &
+        for id,client in api.client.items():
+            pos_raw = client.get_all_positions()
+            if not pos_raw:continue
+
+            pos = parse_positions(pos_raw)
+            if pos.empty:continue
+
+            if not api.trading_hours(resume_time=9,pause_time=16):continue
+
+            manageOptions(client,pos)
+
+    except (KeyError,ValueError,TypeError,Exception) as e:
+        raise
+    finally:
+        elapsed_time = (dt.datetime.now() - starttime).total_seconds() // 60
+        print(f'Portfolio Check complete ({elapsed_time} mins)...')
+
+def manageOptions(client, pos):
+    positions = pos.loc[
+        (pos['asset_class'].str.contains("us_option", case=False)) &
         (pos['qty_available'] > 0)
     ].copy()
 
     if positions.empty:
         return
-    
+
     limit_orders = []
     stoploss_orders = []
     portfolio_delta = []
-    for i, row in positions.iterrows():
-        try:
-            orders = client.get_orders(filter=GetOrdersRequest(status='open', limit=300, nested=False, symbols=[row.symbol])) #type: ignore
-            isOpenOrder = True if orders else False
-            if isOpenOrder:
-                continue
-            
-            res = checkPrices(row)
 
-            portfolio_delta.append(res[3]*row.qty)
+    try:
+        for i, row in positions.iterrows():
+            try:
+                orders = client.get_orders(filter=GetOrdersRequest(status='open', limit=300, nested=False, symbols=[row.symbol]))  # type: ignore
+                if orders:
+                    continue
+                
+                res = checkPrices(row)
 
-            if res[0]:
-                if res[2]:
-                    stoploss_orders.append(row.symbol)
+                portfolio_delta.append(res[3] * row.qty)
+
+                if res[0]:
+                    if res[2]:
+                        stoploss_orders.append(row.symbol)
+                    else:
+                        volume = max(res[4] // 10, 1)
+                        limit_orders.append((row.symbol, res[1], min(row.qty_available, volume)))
+
+            except Exception as e:
+                if "Missing Underlying Price Data" in str(e):
+                    logging.warning(f"[{manageOptions.__name__}] Error processing symbol {row.symbol}: {e}")
+                    continue
                 else:
-                    volume = max(res[4]//10,1)
-                    limit_orders.append((row.symbol, res[1], min(row.qty_available, volume)))
+                    raise
 
-        except Exception as e:
-            logging.exception(f"{manageOptions.__name__} Error: {e}")
-            continue
+        if portfolio_delta:
+            portfolio_delta_sum = float(sum(portfolio_delta))
+            redis_key = 'portfolio_delta_live' if client is api.client['LIVE'] else 'portfolio_delta'
+            redis_client.set(redis_key, portfolio_delta_sum)
 
-    if portfolio_delta is not None:
-        # pass this to the database
-        if client is api.client['DEV']:
-            redis_client.set('portfolio_delta', float(sum(portfolio_delta)))
-        else:
-            redis_client.set('portfolio_delta_live', float(sum(portfolio_delta)))    
+        if limit_orders or stoploss_orders:
+            print("Positions found to close")
+            print(f"Portfolio delta: {sum(portfolio_delta):.2f}")
 
-    if limit_orders or stoploss_orders:
-        print("positions found to close")
-        print(f"portfolio delta: {sum(portfolio_delta):.2f}")
-
-        if len(stoploss_orders)>0:
             for symbol in stoploss_orders:
                 try:
-                    exitOrder(symbol,client)
+                    execution_manager.push_order_db(order=SkyOrder(client=client,symbol=symbol,order_type="exit",order_memo=f"Stop Loss hit for {symbol}"))
+                    exitOrder(symbol, client)
                     print(f"Stop Loss hit for {symbol}")
                 except Exception as e:
                     if "options market orders are only allowed during market hours" in str(e):
                         logging.debug(f"{manageOptions.__name__} Error 2: {e}")
                     else:
-                        logging.exception(f"{manageOptions.__name__} Error 2: {e}")
-                    continue
-        
-        if len(limit_orders)>0:
+                        logging.exception(f"{manageOptions.__name__}")
+                        break
+
             for symbol, take_profit, quantity in limit_orders:
                 try:
-                    result = optionsOrder(symbol,take_profit,orderID=symbol,client=client,quantity=quantity,side='sell',isMarketOrder=False)
-                    # print(f"Order placed for {symbol}, take profit: {take_profit}, quantity: {quantity}")
+                    execution_manager.push_order_db(order=SkyOrder(client=client,symbol=symbol,order_type="limit",order_memo=symbol,side='sell',quantity=quantity))
+                    optionsOrder(symbol, take_profit, orderID=symbol, client=client, quantity=quantity, side='sell', isMarketOrder=False)
                 except Exception as e:
                     if "options market orders are only allowed during market hours" in str(e):
                         logging.debug(f"{manageOptions.__name__} Error 3: {e}")
                     else:
-                        logging.exception(f"{manageOptions.__name__} Error 3: {e}")
-                    continue
+                        logging.exception(f"{manageOptions.__name__}")
+                        break
 
+    except (KeyError,ValueError,TypeError,Exception) as e:
+        raise
+    
 def checkPrices(row):
     base_symbol,strike_price,days_to_expiry,option_type = api.parseOptSym(row.symbol) #type: ignore
     if days_to_expiry < 3:
         return [True,0.0,True,0.0]
-    # moved inside of class
+
     # Model fitting and data fetching based on the base symbol
-    opm = Strategy_PricingModel()
+    opm = Strategy_PricingModel() 
     try:
         opm.getData(base_symbol,startoffset=max(days_to_expiry-15,1),maxTime=days_to_expiry+15,limit=100)
-        # opm.printStats = True
         opm.fitModel()
         modeled_price,delta = opm.forecast(strike_price,days_to_expiry,option_type)
-    except Exception as e:
-        logging.exception(f"{checkPrices.__name__} Error: {e}")
-        return [False,0.0,False,0.0]
+    # except Exception as e:
+    #     if "Missing Underlying Price Data" in str(e):
+    #         raise Exception(f"{checkPrices.__name__}: {e}")
+    #     raise
+    #     # return [False,0.0,False,0.0]
 
-    try:
+    # try:
         quote = get_latest_quote(row.symbol,'options').iloc[0]
         if quote.bid_price == 0.0 or quote.mid_price == 0.0:
-            print(row.symbol,quote.bid_price,quote.mid_price)
+            logging.warning(f'Missing Quote Data {row.symbol} {quote.bid_price} {quote.mid_price}')
             return [False,0.0,False,delta]
         
         # Fixing an error on alpaca's end
@@ -205,14 +213,14 @@ def checkPrices(row):
         conditions = [sell,[time_exit,days_to_expiry],[badDelta,round(delta,2)],pnl,marketOrder,[simple_midprice<quote.mid_price,round(simple_midprice,2),round(quote.mid_price,2)]]
         if sell:
             print(f'[{row.symbol}]: {row.cost_per_unit:.4f} P/L: {liquid_plpc_mid:.2%} of Spread: {liquid_spread_mid:.2%}')
-            logging.info(f'{row.symbol} {conditions}')
-            logging.info(f'[{row.symbol}] {row.cost_per_unit} P/L: [{liquid_plpc_mid:.2%} {liquid_plpc_worst:.2%}]  % of Spread: [{liquid_spread_mid:.2%} {liquid_spread_worst:.2%}]')
-            logging.info(f"{row.symbol} Strike: {strike_price} Model Price: {modeled_price:.2f} Mid Price: {quote.mid_price:.2f} Mid2: {simple_midprice:.2f} Delta: {delta:.2f}")    
+            logging.info(f'[{row.symbol}] {conditions}')
+            logging.info(f'[{row.symbol}] {row.cost_per_unit} P/L: [{liquid_plpc_mid:.2%},{liquid_plpc_worst:.2%}]  % of Spread: [{liquid_spread_mid:.2%},{liquid_spread_worst:.2%}]')
+            logging.info(f'[{row.symbol}] Strike: {strike_price} Model Price: {modeled_price:.2f} Mid Price: {quote.mid_price:.2f} Mid2: {simple_midprice:.2f} Delta: {delta:.2f}')    
             
         return [sell,tp,marketOrder,delta,quote.mid_v,reason]
 
-    except Exception as e:
-        logging.exception(f"{checkPrices.__name__} Error: {e}")
+    except (KeyError,ValueError,TypeError,Exception) as e:
+        raise
         return [False,0.0,False,delta]
 
 def reversalDCA(client=api.client['DEV'],exposure_Target=0.05):
@@ -237,64 +245,72 @@ def reversalDCA(client=api.client['DEV'],exposure_Target=0.05):
         pos_raw = client.get_all_positions()
         if not pos_raw:
             return
+        
         pos = parse_positions(pos_raw)
-
+        if pos.empty:
+            return
+        
         equities_pre = pos.loc[~pos['asset_class'].str.contains("us_option",case=False)]
         equities = equities_pre.loc[~((equities_pre['side'].str.contains("short",case=False)) & (equities_pre['qty_available'].abs() < 2))].copy()
         equities['abs_market_value'] = equities['market_value'].abs()
         if exposure_Ratio > 1:
             threshold = equities['abs_market_value'].quantile(0.75)
-            filtered_equities = equities.loc[equities['abs_market_value'] <= threshold]
+            filtered_equities = equities.loc[equities['abs_market_value'] <= threshold].copy()
         else:
             threshold = equities['abs_market_value'].quantile(0.75)
-            filtered_equities = equities.loc[equities['abs_market_value'] >= threshold]
+            filtered_equities = equities.loc[equities['abs_market_value'] >= threshold].copy()
 
 
         damper = 1
         adjustment_factor = abs((1 / exposure_Ratio)-1)*damper if exposure_Ratio > 1 else abs(exposure_Ratio-1)*damper
-        for index, position in filtered_equities.iterrows():
 
-            symbol = position['symbol']
-            current_quantity = abs(position['qty_available'])
-            side = position['side']
-            
+        def place_Orders(row):
+            symbol = row['symbol']
+            current_quantity = abs(row['qty_available'])
+            direction = row['side']
             new_quantity = current_quantity * adjustment_factor
             quantity_diff = new_quantity
+            if quantity_diff == 0:
+                return False
             
-            # Place an order to adjust the position
-            if quantity_diff != 0:
-                qty = int(math.ceil(quantity_diff)) if "short" in side else round(quantity_diff,9)
-                side_order = 'buy' if ((exposure_Ratio > 1 and "long" in side) or (exposure_Ratio < 1 and "sell" in side)) else 'sell'
-                orderData = MarketOrderRequest(
-                    symbol=symbol,
-                    qty=qty,
-                    side=side_order,
-                    time_in_force='day',
-                )
-                print(symbol,round(exposure_Ratio,3),round(adjustment_factor,3),round(quantity_diff,3),side,side_order)
-                try:
-                    client.submit_order(orderData)
-                except Exception as e:
-                    try:
-                        if "minimal" in str(e):
-                            client.submit_order(MarketOrderRequest(symbol=symbol,notional=1.0,side=side_order,time_in_force='day'))
-                    except Exception as e:
-                        logging.exception(f"{reversalDCA.__name__} Error 1: {e}")
+            qty = int(math.ceil(quantity_diff)) if 'short' in direction.lower() else round(quantity_diff, 9)
+            side = 'buy' if ((exposure_Ratio > 1 and 'long' in direction.lower()) or (exposure_Ratio < 1 and 'short' in direction.lower())) else 'sell'
+            orderData = MarketOrderRequest(
+                symbol=symbol,
+                qty=qty,
+                side=side,
+                time_in_force='day',
+                )             
+            try:
+                execution_manager.push_order_db(order=SkyOrder(client=client, symbol=symbol, order_type="dca", order_memo=symbol, side=side, quantity=qty))
+                client.submit_order(orderData)
+                logging.info(f"{symbol},{exposure_Ratio:.3f},{adjustment_factor:.3f},{quantity_diff:.3f},{direction},{side}")
+                return True
+            except Exception as e:
+                if "minimal" in str(e):
+                    client.submit_order(MarketOrderRequest(symbol=symbol, notional=1.0, side=side, time_in_force='day'))
+                    logging.info(f"{symbol},{exposure_Ratio:.3f},{adjustment_factor:.3f},{quantity_diff:.3f},{direction},{side}")
+                    return False
+                else:
+                    logging.exception(f"{place_Orders.__name__}")
+                    return False
+
+        filtered_equities.apply(place_Orders, axis=1)
+
         print(f"Exposure Ratios: [{exposure_Ratio:.3%} {((float(client.get_account().non_marginable_buying_power)/float(client.get_account().equity))/exposure_Target):.3%}]") #type: ignore
-    except Exception as e:
-        logging.exception(f"{reversalDCA.__name__} Error 2: {e}")
+    except (KeyError,ValueError,TypeError,Exception) as e:
+        logging.exception(f"{reversalDCA.__name__}")
 
 class PortfolioManager():
     def __init__(self,client = api.client['DEV']):
         self.riskfreerate = 0.05161
         self.short_interest_rate = 0.085
         self.cash_allocation = 0.05
-        self.stock_allocation = 0.7
+        self.stock_allocation = 0.80
         self.options_allocation = 1-(self.cash_allocation+self.stock_allocation)
         self.long_bias = 0.2
         self.short_allocation = self.riskfreerate+self.short_interest_rate+self.long_bias+1
         self.base_risk = config.RISK_EXPOSURE
-        # self.portfolio_delta = float(redis_client.get('portfolio_delta')) if client is api.client['DEV'] else float(redis_client.get('portfolio_delta_live'))
         self.client = client
         self.update_values(client)
         self.update_instruments(client)
@@ -303,11 +319,7 @@ class PortfolioManager():
 
     def update_values(self,client = api.client['DEV']):
         key = 'portfolio_delta_live' if client is api.client['LIVE'] else 'portfolio_delta'
-        portfolio_delta = redis_client.get(key)
-        self.portfolio_delta = float(portfolio_delta) if portfolio_delta is not None else 0.0
-
-        # self.portfolio_delta = float(redis_client.get('portfolio_delta')) if client is api.client['DEV'] else float(redis_client.get('portfolio_delta_live'))
-        
+        self.portfolio_delta = float(redis_client.get(key) or 0.0) #type: ignore
 
         acct_info = client.get_account()
         if not acct_info:
@@ -339,11 +351,8 @@ class PortfolioManager():
             return False
         
         posdf_json = self.positions.to_json(orient='records')
-        if client is api.client['DEV']:
-            redis_client.set('current_positions_DEV', posdf_json)
-        else:
-            redis_client.set('current_positions_LIVE', posdf_json)
-
+        key = 'current_positions_LIVE' if client is api.client['LIVE'] else 'current_positions_DEV'
+        redis_client.set(key, posdf_json)
         return True
     
     def update_instruments(self,client = api.client['DEV']):
@@ -353,7 +362,7 @@ class PortfolioManager():
         try:
             equities = self.positions.loc[~self.positions['asset_class'].str.contains("us_option",case=False)].copy()
             cost_EQ = equities.cost_basis.abs().to_numpy()
-            options = self.positions.loc[self.positions['asset_class'].str.contains("us_option",case=False)]
+            options = self.positions.loc[self.positions['asset_class'].str.contains("us_option",case=False)].copy()
             cost_OP = options.cost_basis.abs().to_numpy()
 
             # hotfix for alpaca options rounding error
@@ -362,16 +371,19 @@ class PortfolioManager():
                 cost_OP *= 100
 
             op_ratio = cost_OP.sum()/cost_EQ.sum()
-            correctionFactor = self.options_allocation/op_ratio
-            smoothingFactor = 0.5
-            self.options_CF = correctionFactor*smoothingFactor
+            if op_ratio == 0:
+                self.options_CF = 1
+            else:
+                correctionFactor = self.options_allocation/op_ratio
+                smoothingFactor = 0.5
+                self.options_CF = correctionFactor*smoothingFactor
             self.op_ratio = op_ratio
             self.options_VaR = cost_OP.sum()
             self.equity_VaR = cost_EQ.sum()
-            print(f'Options_VaR: {self.options_VaR:.2f} Equity_VaR: {self.equity_VaR:.2f} Op_Ratio: {op_ratio:.2%} Portfolio_Delta {self.portfolio_delta:.2f}')
+            print(f'Options_VaR: {self.options_VaR:.2f} Equity_VaR: {self.equity_VaR:.2f} Op_Ratio: {self.op_ratio:.2%} Portfolio_Delta {self.portfolio_delta:.2f}')
             return True
         except Exception as e:
-            logging.exception(f"{self.update_instruments.__name__} Error: {e}")
+            logging.exception(f"{self.update_instruments.__name__}")
             return False
 
     def rebalance(self,client=api.client['DEV']):
@@ -423,7 +435,7 @@ class PortfolioManager():
                         if 'minimal' in str(e):
                             client.submit_order(MarketOrderRequest(symbol=symbol,notional=1.0,side=side_order,time_in_force='day'))  
                     except Exception as e:
-                        logging.exception(f"{self.rebalance.__name__} Error: {e}")
+                        logging.exception(f"{self.rebalance.__name__}")
         self.update_values()
         print(round(self.exposure_Ratio,3)) #type: ignore
 
