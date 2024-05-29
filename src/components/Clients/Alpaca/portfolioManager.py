@@ -19,7 +19,7 @@ import json
 import logging
 import pandas as pd
 
-redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
+redis_client = redis.Redis(host=str(config.DB_HOST), port=config.DB_PORT, decode_responses=True)
 ts = redis_client.ts()
 if not redis_client.exists("pnl"):
     ts.create("pnl")

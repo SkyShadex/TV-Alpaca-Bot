@@ -10,10 +10,11 @@ import pytz
 import datetime as dt
 import numpy as np
 import config
+from io import StringIO
 import time
 import redis
 import logging
-
+from io import StringIO
 
 apHist = StockHistoricalDataClient(config.API_KEY,config.API_SECRET)
 apCrypto = CryptoHistoricalDataClient(config.API_KEY,config.API_SECRET)
@@ -196,13 +197,13 @@ def get_ohlc_alpaca(symbols: str|list[str], lookback: int, timeframe: TimeFrame=
     
 
 def store_ohlcv_db(ohlcv,symbol,timeframe,cached=True):
-    redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
+    redis_client = redis.Redis(host=str(config.DB_HOST), port=config.DB_PORT, decode_responses=True)
     KEY = f'OHLCV_{symbol}_{str(timeframe)}'
     UTC_TIMEZONE = pytz.timezone('UTC')
     try:
         price_data_old_json = redis_client.get(KEY)
         if price_data_old_json is not None:
-            price_data_old = pd.read_json(price_data_old_json, orient='records')
+            price_data_old = pd.read_json(StringIO(price_data_old_json), orient='records')
 
             # price_data_old['timestamp'] = pd.to_datetime(price_data_old['timestamp'], utc=True)
             # ohlcv['timestamp'] = pd.to_datetime(ohlcv['timestamp'], utc=True)
@@ -227,13 +228,13 @@ def store_ohlcv_db(ohlcv,symbol,timeframe,cached=True):
         raise Exception(error_message) 
 
 def retrieve_ohlcv_db(symbol,timeframe):
-    redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
+    redis_client = redis.Redis(host=str(config.DB_HOST), port=config.DB_PORT, decode_responses=True)
     KEY = f'OHLCV_{symbol}_{str(timeframe)}'
     UTC_TIMEZONE = pytz.timezone('UTC')
     try:
         price_data_old_json = redis_client.get(KEY)
         if price_data_old_json is not None:
-            price_data_old = pd.read_json(price_data_old_json, orient='records')
+            price_data_old = pd.read_json(StringIO(price_data_old_json), orient='records')
             price_data_old['date'] = pd.to_datetime(price_data_old['timestamp'],utc=True)
             price_data_old.drop_duplicates(keep='last',inplace=True)
             price_data_old.set_index(pd.DatetimeIndex(price_data_old['date'],tz=UTC_TIMEZONE),inplace=True)

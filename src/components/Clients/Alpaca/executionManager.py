@@ -375,7 +375,7 @@ class SkyOrder:
 class ExecutionManager(threading.Thread):
     def __init__(self):
         super().__init__()
-        self.redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
+        self.redis_client = redis.Redis(host=str(config.DB_HOST), port=config.DB_PORT, decode_responses=True)
 
     def push_order_db(self,order: SkyOrder):
         order_id = order.order_id

@@ -1,0 +1,35 @@
+version: '3.8'
+
+# networks:
+#   redisdb:
+#     bridge: ""
+
+services:
+  sky-alpaca-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: vars.env
+    ports:
+      - "${LOCAL_PORT}:${LOCAL_PORT}"
+    volumes:
+      - .:/workspaces:cached
+    # networks:
+    #     - redisdb
+    depends_on:
+      - redis
+
+  redis:
+    image: redis/redis-stack-server:latest
+    env_file: vars.env
+    ports:
+      - "${DB_PORT}:${DB_PORT}"
+    hostname: "${DB_HOST}"
+    volumes:
+      - redis-data:/data
+    # restart: always
+    # networks:
+    #   - redisdb
+
+volumes:
+  redis-data:

@@ -24,7 +24,7 @@ from flask_caching import Cache
 from components.Clients.Alpaca import executionManager, portfolio
 from components.Clients.Alpaca.portfolioManager import managePNL,reversalDCA,PortfolioManager
 
-
+import sys
 import config
 from commons import start, vars
 from components import discord
@@ -37,8 +37,8 @@ from flask_apscheduler import APScheduler
 
 
 app = Flask(__name__)
-logging.basicConfig(level=logging.INFO, filename="logs/py_log.log",filemode="a",format='%(asctime)s %(levelname)s:%(name)s:%(message)s')
-redis_client = redis.Redis(host=str(config.DB_HOST), port=int(str(config.DB_PORT)), decode_responses=True)
+logging.basicConfig(level=logging.INFO,stream=sys.stdout,filemode="a",format='%(asctime)s %(levelname)s:%(name)s:%(message)s') #filename="logs/py_log.log"
+redis_client = redis.Redis(host=str(config.DB_HOST), port=config.DB_PORT, decode_responses=True)
 # redis_client.bgsave()
 cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
@@ -293,5 +293,5 @@ def get_file_content():
 #         orderResults(webhook_message,side_WH)
 
 if __name__ == '__main__':
-    app.run(host=config.LOCAL_HOST, port=int(str(config.LOCAL_PORT)), debug=False)
+    app.run(host=config.LOCAL_HOST, port=config.LOCAL_PORT, debug=False)
     post_thread.start()

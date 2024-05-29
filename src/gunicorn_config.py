@@ -1,4 +1,3 @@
-# gunicorn_config.py
 import multiprocessing
 
 bind = '0.0.0.0:5000'  # Bind to all available network interfaces to port
