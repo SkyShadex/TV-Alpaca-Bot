@@ -129,9 +129,5 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-
-src/logs/
-src/components/Clients/Alpaca/Strategy/
-src/static/
-dashboard/logs/
-dashboard/components/Clients/Alpaca/Strategy/
+*/*strategy*/
+*/*logs*/
