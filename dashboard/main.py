@@ -34,6 +34,8 @@ order_lock = Lock()
 tracemalloc.start()
 s = None
 
+print("party time")
+
 start.startMessage(api.prod.get_account().buying_power, api.prod.get_account().non_marginable_buying_power, api.prod.get_account().daytrade_count) # type: ignore
 start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count) # type: ignore   
 
