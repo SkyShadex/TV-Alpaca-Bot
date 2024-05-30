@@ -1,0 +1,462 @@
+import pandas as pd
+import numpy as np 
+import matplotlib.pyplot as plt
+from scipy.stats import zscore, linregress
+from sklearn.model_selection import KFold, TimeSeriesSplit, GridSearchCV
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from alpaca.trading.client import TradingClient
+from alpaca.data.historical.stock import StockHistoricalDataClient
+from alpaca.data.requests import StockBarsRequest
+from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
+from alpaca.trading.requests import GetAssetsRequest
+from alpaca.trading.enums import AssetClass
+# from alpaca.trading.requests import APIError
+import time
+import json
+from fastdtw import fastdtw
+import statsmodels.tsa.stattools as ts
+from pykalman import KalmanFilter
+import time
+import pytz
+import seaborn as sns
+import datetime as dt
+import random
+import os
+import config
+
+
+apiKey = config.API_KEY
+apiSec = config.API_SECRET
+
+apHist = StockHistoricalDataClient(config.API_KEY,config.API_SECRET)
+apAct = TradingClient(apiKey,apiSec,paper=True)
+
+
+def getUniverse():
+    search_params = GetAssetsRequest(status='active',asset_class='us_equity',exchange=None)
+    data = apAct.get_all_assets(search_params)
+    keys = [list(zip(*row))[0] for row in data]
+    values = [list(zip(*row))[1] for row in data]
+    row_dicts = [dict(zip(keys[i], values[i])) for i in range(len(keys))]
+    assets = pd.DataFrame(row_dicts)
+    assets.shape
+
+    filtered_assets = assets[
+    (assets['tradable'] == True) &
+    (assets['easy_to_borrow'] == True) &
+    (assets['shortable'] == True) &
+    (assets['fractionable'] == True) &
+    (~assets['name'].str.contains("ETF")) &
+    # (~((assets['symbol'].str.endswith('f')) & (assets['symbol'].str.len() == 5))) &
+    # (~((assets['symbol'].str.endswith('e')) & (assets['symbol'].str.len() == 5))) &
+    # (~((assets['symbol'].str.endswith('m')) & (assets['symbol'].str.len() == 5))) &
+    # (~((assets['symbol'].str.endswith('j')) & (assets['symbol'].str.len() == 5))) &
+    # (~((assets['symbol'].str.endswith('q')) & (assets['symbol'].str.len() == 5))) &
+    # (~assets['name'].str.contains("Class A"))&  
+    (assets['attributes'].apply(lambda x: "options_enabled" in x))
+    ]
+
+    filtered_assets.reset_index(drop=True, inplace=True)
+    cleanassets = filtered_assets['symbol']
+    cleanassets.shape
+    return cleanassets
+
+
+def cleanOHLC(firstOHLC,secondOHLC):
+    # Drop rows with 'inf' or 'NaN' values in log returns
+    first = firstOHLC.replace([np.inf, -np.inf], np.nan).dropna(subset=['log returns'], axis=0)
+    second = secondOHLC.replace([np.inf, -np.inf], np.nan).dropna(subset=['log returns'], axis=0)
+
+    # Align DataFrames based on time index
+    aligned_data = pd.concat([first, second], axis=1, keys=['first', 'second']).dropna()
+
+    first = aligned_data['first']
+    second = aligned_data['second']
+
+    # if not np.all(np.isfinite(second)):
+    #     raise ValueError("Exogenous variable contains 'inf' or 'NaN' values.")
+
+    if len(first) != len(second):
+        raise ValueError(f"Dataframes aren't aligned. {len(first)} != {len(second)}")
+
+    if len(first) == 0 or len(second) == 0:
+        raise ValueError("Empty dataframes after cleaning.")
+    
+    return first, second
+
+def check_pair(firstOHLC, secondOHLC, threshold=0.05):
+    first, second = cleanOHLC(firstOHLC.copy(),secondOHLC.copy())
+
+    first_Close = first['close']
+    first_Returns = first['log returns']
+    second_Close = second['close']
+    second_Returns = second['log returns']
+
+    correlation_data = pd.concat([first_Returns, second_Returns], axis=1, keys=['first', 'second']).dropna()
+    corr_val = correlation_data.corr()
+    # print(corr_val)
+
+    X = ts.add_constant(second_Returns)
+    result = ts.OLS(first_Returns, X).fit()
+    beta = result.params['log returns']
+
+    X2 = ts.add_constant(second_Close)
+    result = ts.OLS(first_Close, X2).fit()
+    betaClose = result.params['close']
+
+    # if abs(beta) < 0.5:
+    #     print(f"Erroneous Beta. {beta:.3f}")
+    #     return 0
+    #     # raise ValueError(f"Low Beta. {beta}")
+
+    ratio = first_Close / (betaClose * second_Close)
+    spread_Close = first_Close - (betaClose * second_Close)
+    spread = first_Returns - (beta * second_Returns)
+
+    z_pval = ts.adfuller(spread)[1]
+    if z_pval > threshold:
+        raise ValueError(f"High P-Value for z. {z_pval}")
+
+
+    z_pval_spread = 0
+    z_pval_ratio = 0
+    isRigorous = False
+    
+    if isRigorous:
+        z_pval_spread = ts.adfuller(spread)[1]
+        if z_pval_spread > threshold and isRigorous:
+            raise ValueError(f"High P-Value for spread. {z_pval_spread}")
+
+        ratio = ratio.replace([np.inf, -np.inf], np.nan).dropna()
+        # ratio -= ratio.mean()
+        z_pval_ratio = ts.adfuller(ratio)[1]
+        if z_pval_ratio > threshold and isRigorous:
+            raise ValueError(f"High P-Value for ratio. {z_pval_ratio}")
+
+    # print(f'returns P: {z_pval:.3f}.  price spread P: {z_pval_spread:.3f}.  price ratio P: {z_pval_ratio:.3f}. beta {beta:.3f}')
+
+    spread_Z = zscore(spread, axis=None)
+
+    return spread_Z, spread, spread_Close, z_pval, beta, first_Close, second_Close, first_Returns, second_Returns
+
+def universeOHLC(cleanassets):
+    # Collect OHLCV data for all cleaned assets
+    all_ohlcv_data = {}
+    sleep_duration = 60 / 200
+    total_assets = len(cleanassets)
+
+    for i, symbol in enumerate(cleanassets, 1):
+        timeframe = TimeFrame(1, TimeFrameUnit('Week'))
+        lookback = 365 * 1
+        print(f"Fetching data for {symbol} ({(i/total_assets)*100:.2f}%)...")
+        ohlc_data = get_ohlc_alpaca(symbol, lookback, timeframe)
+        # Filter Out Expensive Assets
+        if ohlc_data['close'].iloc[-1] < 50:
+            all_ohlcv_data[symbol] = ohlc_data
+        time.sleep(sleep_duration)
+
+    # Create a DataFrame from the fetched data
+    all_ohlcv_df = pd.concat(all_ohlcv_data.values(), keys=all_ohlcv_data.keys(), names=['Symbol', 'Date'])
+    return all_ohlcv_df
+
+def corrMatrix(dataframe,threshold=0.4):
+    # Step 1: Select the 'log returns' column for correlation calculation
+    log_returns_column = dataframe['log returns']
+
+    # Step 2: Unstack to create a DataFrame with 'Symbol' as columns
+    log_returns_unstacked = log_returns_column.unstack(level=0)
+
+    # Step 3: Calculate correlation coefficients
+    correlation_matrix = log_returns_unstacked.corr()
+
+    correlation_matrix2 = correlation_matrix
+    np.fill_diagonal(correlation_matrix2.values, np.nan)
+    # Step 4: Filter out spurious relationships
+    filtered_correlation_matrix = correlation_matrix2[abs(correlation_matrix2) >= threshold]
+    
+    return [correlation_matrix,filtered_correlation_matrix]
+
+def filterCorrelation(uni_OHLC):
+    correlation_matrix, filtered_correlation_matrix = corrMatrix(uni_OHLC,0.8)
+    filtered_correlation_matrix = filtered_correlation_matrix.dropna(axis=0, how='all').dropna(axis=1, how='all')
+    filtered_correlation_matrix.shape
+    return filtered_correlation_matrix
+
+def calculate_half_life(series):
+    lag = series.shift(1).fillna(0)
+    delta = series - lag
+    beta = np.polyfit(lag, delta, 1)[0]
+    half_life = -np.log(2) / beta
+    return half_life
+
+def find_highest_beta_pair(filtered_correlation_matrix, lookback, timeframe, beta_threshold=0.4):
+    pairs_above_threshold = []
+    sleep_duration = 60 / 200
+
+    # Find indices of the upper triangle
+    upper_triangle_indices = np.triu_indices(len(filtered_correlation_matrix.columns), k=1)
+
+    # Create a new DataFrame with only the upper triangle values
+    sorted_values = np.abs(filtered_correlation_matrix.values[upper_triangle_indices]).flatten()
+    sorted_indices = np.argsort(sorted_values)[::-1]
+    sorted_df = pd.DataFrame({
+        'Asset A': filtered_correlation_matrix.columns[upper_triangle_indices[0][sorted_indices]],
+        'Asset B': filtered_correlation_matrix.columns[upper_triangle_indices[1][sorted_indices]],
+        'Correlation': sorted_values[sorted_indices]
+    })
+
+    sorted_df = sorted_df.dropna()
+    # Display the result
+    print(sorted_df)
+    total_pairs = len(sorted_df)
+
+    for i, row in enumerate(sorted_df.itertuples(index=False)):
+        progress_percentage = (i + 1) / total_pairs * 100
+        print(f"Progress: {progress_percentage:.2f}%")
+        pairA = row[0]  # Accessing first column (Asset A)
+        pairB = row[1]  # Accessing second column (Asset B)
+
+        ohlc_A = get_ohlc_alpaca(pairA, lookback, timeframe)
+        time.sleep(sleep_duration/2)
+        ohlc_B = get_ohlc_alpaca(pairB, lookback, timeframe)
+        time.sleep(sleep_duration/2)
+
+        try:
+            pairResults = check_pair(ohlc_A, ohlc_B)
+        except:
+            continue
+
+        _, spread, _, _, beta, _, _, returns_A, returns_B = pairResults
+
+        if abs(beta) < beta_threshold and abs(beta) > (1-beta_threshold)+1:
+            continue
+
+        if (half_life_spread := calculate_half_life(spread)) < 0.7:
+            continue
+                    
+        pairs_above_threshold.append({
+            'symbol': [pairA, pairB],
+            'beta': beta,
+            'returns_A': returns_A,
+            'returns_B': returns_B,
+            'half_life_spread': half_life_spread})
+
+        # Print progress
+        print(f'half life: {half_life_spread:.3f}')
+        
+
+    return pairs_above_threshold
+
+def stratSignals(closes_A,closes_B,sourceZ,upperThres,lowerThres,upperFloor,lowerFloor):
+    signals = pd.DataFrame()
+
+    signals['asset1'] = closes_A
+    signals['asset2'] = closes_B
+    signals['z'] = sourceZ
+    signals['z upper limit'] = np.percentile(sourceZ.dropna(),upperThres)
+    signals['z lower limit'] = np.percentile(sourceZ.dropna(),lowerThres)
+    signals['z upper close'] = np.percentile(sourceZ.dropna(),upperFloor)
+    signals['z lower close'] = np.percentile(sourceZ.dropna(),lowerFloor)
+    signals['signals1'] = 0
+    signals['signals1'] = np.select(
+        [
+            signals['z'] > signals['z upper limit'],
+            signals['z'] < signals['z lower limit'],
+            (signals['z'] < signals['z upper close']) & (signals['z'] > signals['z lower close'])
+        ],
+        [-1, 1, 0],
+        default=0)
+    signals['positions1'] = signals['signals1'].diff()
+    signals['signals2'] = -signals['signals1']
+    signals['positions2'] = signals['signals2'].diff()
+    signals['positions1'] = signals['positions1'].fillna(0)
+    signals['positions2'] = signals['positions2'].fillna(0)
+    return signals
+
+def calculate_portfolio(signals, beta, initial_capital=500):
+    portfolio = pd.DataFrame()
+
+    positions1 = (initial_capital) / max(signals['asset1'])
+    positions2 = positions1 * beta
+
+    portfolio['asset1'] = signals['asset1']
+    portfolio['holdings1'] = signals['positions1'].cumsum() * signals['asset1'] * positions1
+    portfolio['hedgeratio'] = beta
+    portfolio['cash1'] = (initial_capital) - (signals['positions1'] * signals['asset1'] * positions1).cumsum()
+    portfolio = portfolio.dropna(subset=['cash1'])
+    portfolio['total asset1'] = portfolio['holdings1'] + portfolio['cash1']
+    portfolio['return1'] = portfolio['total asset1'].pct_change()
+    portfolio['positions1'] = signals['positions1']
+
+    portfolio['asset2'] = signals['asset2']
+    pos2 = positions1 * portfolio['hedgeratio']
+    portfolio['holdings2'] = signals['positions2'].cumsum() * signals['asset2'] * pos2
+    portfolio['cash2'] = (initial_capital) - (signals['positions2'] * signals['asset2'] * pos2).cumsum()
+    portfolio['total asset2'] = portfolio['holdings2'] + portfolio['cash2']
+    portfolio['return2'] = portfolio['total asset2'].pct_change()
+    portfolio['positions2'] = signals['positions2']
+
+    portfolio['z'] = signals['z']
+    portfolio['total asset'] = (portfolio['total asset1'] + portfolio['total asset2']) / 2
+    portfolio['z upper limit'] = signals['z upper limit']
+    portfolio['z lower limit'] = signals['z lower limit']
+    portfolio['initcash'] = initial_capital
+
+    return portfolio
+
+def stratResults(portfolio):
+    # # plot the asset value change of the portfolio and pnl along with z-score
+    equity_curve = portfolio['total asset']
+    # fig = plt.figure(figsize=(14,6))
+    # ax = fig.add_subplot(111)
+    # ax2 = ax.twinx()
+    # l1, = ax.plot(portfolio['total asset'], c='g')
+    # l2, = ax2.plot(portfolio['z'], c='black', alpha=0.3)
+    # # l3, = ax2.plot(portfolio['hedgeratio'], c='blue', linestyle='--')
+    # b = ax2.fill_between(portfolio.index,portfolio['z upper limit'],\
+    #                 portfolio['z lower limit'], \
+    #                 alpha=0.2,color='#ffb48f')
+    # ax.set_ylabel('Asset Value')
+    # ax2.set_ylabel('Z Statistics',rotation=270)
+    # ax.yaxis.labelpad=15
+    # ax2.yaxis.labelpad=15
+    # ax.set_xlabel('Date')
+    # ax.xaxis.labelpad=15
+    # plt.title('Portfolio Performance with Profit and Loss')
+    # plt.legend([l2,b,l1],['Z Statistics','Z Bounds','Total Portfolio Value'],loc='upper left')
+    # # plt.savefig('images/chart8', dpi=300);
+
+    total_transaction_costs = 0
+
+    avg_hedge_ratio = portfolio['hedgeratio'].mean()
+
+    # calculate CAGR
+    initial_capital = portfolio['initcash'].iloc[-1]
+    final_portfolio = portfolio['total asset'].iloc[-1]
+    net_A = portfolio['total asset1'].iloc[-1]-initial_capital
+    net_B = portfolio['total asset2'].iloc[-1]-initial_capital
+    returns = np.log(final_portfolio/initial_capital)
+    deltaTime = (portfolio.index[-1] - portfolio.index[0]).days
+    YEAR_DAYS = 365
+    cagr = (final_portfolio/initial_capital) ** (YEAR_DAYS/deltaTime) - 1
+
+    non_zero_returns = portfolio.loc[(portfolio['return1'] != 0) & (portfolio['return2'] != 0)]
+    avgReturns1 = non_zero_returns['return1'].mean()
+    avgReturns2 = non_zero_returns['return2'].mean()
+    avgReturns = (avgReturns1 + avgReturns2) / 2
+
+    # Calculate Average Holding Period for Pairs Trade
+    trades = portfolio['positions1'].diff().fillna(0)
+    trade_starts = trades[trades > 0].index
+    trade_ends = trades[trades < 0].index
+    # Check if there are matching start and end indices for trades
+    # if len(trade_starts) != len(trade_ends):
+    #     print("Error: Mismatched number of trade starts and ends.")
+    #     avg_holding_period = 0
+    # else:
+    holding_periods = [end - start for start, end in zip(trade_starts, trade_ends)]
+    avg_holding_period = np.mean([period.days for period in holding_periods]) if holding_periods else 0
+    avg_holding_period = abs(avg_holding_period)
+
+    
+    print(f'Sessions in Trading window = {deltaTime}')
+    print(f'CAGR = {(cagr*100):.3f}%')
+    print(f'P/L:\n      {(returns*100):.3f}%\n      {final_portfolio-initial_capital:.3f}$')
+    print(f'Net Per Asset:\n     Asset A: {net_A:.3f}$\n     Asset B: {net_B:.3f}$')
+    print(f'Avg. Return (bps): {(avgReturns * 10000):.3f}')
+    print(f'Avg. Holding Period: {avg_holding_period:.3f} days')
+    print(f'Avg. Hedge Ratio = {avg_hedge_ratio:.3f}')
+    return (cagr*100),(returns*100),(avgReturns * 10000),avg_holding_period,avg_hedge_ratio,equity_curve
+
+def refineUniverse(lookback = 365 * 1):
+    universe = getUniverse()
+    uni_OHLC = universeOHLC(universe)
+    correlatedPairs = filterCorrelation(uni_OHLC)
+    best_pair_list = find_highest_beta_pair(correlatedPairs, int(lookback*0.1), TimeFrame(30,TimeFrameUnit('Min')))
+    equity_curves = []
+    cagrs = []
+    try:
+        # Sort the best_pair_list by the absolute difference from 1 in beta
+        best_pair_list = sorted(best_pair_list, key=lambda x: abs(abs(x['beta']) - 1))
+
+        # Iterate through all pairs in best_pair_list
+        for best_pair in best_pair_list:
+            timeframe = TimeFrame(5, TimeFrameUnit('Min'))
+            print(f"Best pair with highest beta: {best_pair['symbol']} {best_pair['beta']}")
+            ohlc_A = get_ohlc_alpaca(best_pair['symbol'][0], lookback, timeframe)
+            ohlc_B = get_ohlc_alpaca(best_pair['symbol'][1], lookback, timeframe)
+            pairResults = check_pair(ohlc_A, ohlc_B)
+            zScore, spread, ratio, p_value, beta, closes_A, closes_B, returns_A, returns_B = pairResults
+            halflife = calculate_half_life(spread)
+            print(halflife)
+
+            # Kalman Filter for Hedge Ratio
+            training_data = np.column_stack((returns_A.values, returns_B.values))
+            empirical_covariance = np.cov(training_data, rowvar=False)
+            obs_mat = ts.add_constant(returns_B.values, prepend=False)[:, np.newaxis]
+            delta = 1e-3
+            trans_cov = delta / (1 - delta) * np.eye(2)
+            init_mean = np.array([beta, 0]) #np.zeros(2)
+            init_covariance = empirical_covariance #np.ones((2, 2))
+            kf = KalmanFilter(n_dim_obs=1, n_dim_state=2, 
+                            initial_state_mean=init_mean,
+                            initial_state_covariance=init_covariance,
+                            transition_matrices=np.eye(2),
+                            observation_matrices=obs_mat,
+                            observation_covariance=1,
+                            transition_covariance=trans_cov)
+            state_means, state_covs = kf.filter(returns_A.values)
+            slope=state_means[:, 0] 
+            intercept=state_means[:, 1]
+
+            # Backtest Params
+            upperThres = 100 - (halflife*0.5)
+            lowerThres = 100-upperThres
+            turnover = 30
+            upperFloor = upperThres - turnover
+            lowerFloor = lowerThres + turnover
+            kf_beta = state_means[:,0] - state_means[:,1]
+            kl_spread = returns_A - returns_B * kf_beta
+            kl_spread_Z = zscore(kl_spread)
+            sourceZ = kl_spread_Z
+
+            # Generate Signals
+            signals = stratSignals(closes_A,closes_B,sourceZ,upperThres,lowerThres,upperFloor,lowerFloor)
+            trades_asset1 = (signals['positions1'] != 0).sum()
+            trades_asset2 = (signals['positions2'] != 0).sum()
+            total_trades = trades_asset1 + trades_asset2
+            tradingDays = len(pd.to_datetime(signals.index.date).unique())
+
+            # Run Backtest
+            portfolio = calculate_portfolio(signals, kf_beta, initial_capital=500)
+
+            # Report Backtest
+            cagr,returns,pnlBPS,avg_holding_period,avg_hedge_ratio,equityCurve = stratResults(portfolio)
+
+            equity_curves.append(equityCurve)
+            cagrs.append(cagr)
+
+        # Calculate the correlation matrix of equity curves
+        equity_curves_corr = np.corrcoef(equity_curves, rowvar=False)
+        # Calculate cumulative portfolio equity curve
+        cumulative_portfolio_equity_curve = np.mean(equity_curves, axis=0)
+        # Calculate cumulative portfolio CAGR
+        cumulative_portfolio_cagr = np.mean(cagrs)
+
+        # Plot cumulative portfolio equity curve
+        plt.figure(figsize=(12, 6))
+        plt.plot(portfolio.index, cumulative_portfolio_equity_curve, label='Cumulative Portfolio Equity Curve', color='blue')
+        plt.xlabel('Date')
+        plt.ylabel('Equity')
+        plt.title('Cumulative Portfolio Equity Curve')
+        plt.legend()
+        plt.show()
+        
+        print("Correlation Matrix of Equity Curves:")
+        print(equity_curves_corr)
+        print("Cumulative Portfolio CAGR:", cumulative_portfolio_cagr)
+
+    except Exception as e:
+        print(f'Error: {e}')
