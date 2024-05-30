@@ -131,3 +131,13 @@ dmypy.json
 
 */*strategy*/
 */*logs*/
+
+
+git filter-branch --force --index-filter 'git rm --cached --ignore-unmatch src/components/Clients/Alpaca/Strategy/OptionsOI.py' --prune-empty --tag-name-filter cat -- --all
+
+src/components/Clients/Alpaca/Strategy/StrategyManager.py
+src/components/Clients/Alpaca/Strategy/TS_MOM.py
+src/components/Clients/Alpaca/Strategy/OptionsOI.py
+src/components/Clients/Alpaca/Strategy/StatArb/HERC.py
+src/components/Clients/Alpaca/Strategy/StatArb/StatArb
+src/static/portfolioperformance.png
