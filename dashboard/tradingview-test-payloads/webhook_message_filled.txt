@@ -1,0 +1,27 @@
+{
+    "passphrase": "",
+    "time": "2023-06-12T14:06:03Z",
+    "exchange": "COINBASE",
+    "ticker": "AAPL",
+    "bar": {
+        "time": "2023-06-12T14:00:00Z",
+        "open": 25801.62,
+        "high": 25823.12,
+        "low": 25733.55,
+        "close": 25784.24,
+        "volume": 103.14724281
+    },
+    "strategy": {
+        "position_size": 0.041763,
+        "order_action": "sell",
+        "order_contracts": 0.041763,
+        "order_price": 25,
+        "order_id": "L",
+        "comment": "Long",
+        "market_position": "long",
+        "market_position_size": 0.041763,
+        "prev_market_position": "flat",
+        "prev_market_position_size": 0
+    }
+}
+

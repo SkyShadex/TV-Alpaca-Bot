@@ -1,8 +1,9 @@
 {
-"name": "Python 3.11",
-"dockerComposeFile": "../docker-compose.yaml",
+"name": "monolithic-container",
 "service": "sky-alpaca-bot",
-"workspaceFolder": "/workspace",
+"dockerComposeFile": ["../docker-compose.yaml"],
+"workspaceFolder": "/workspaceFolder",
+"shutdownAction": "none",
 "customizations": {
 	"vscode": {
 		"extensions": [
