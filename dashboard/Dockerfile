@@ -9,12 +9,15 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --upgrade -r requirements.txt
+RUN pip install -r requirements.txt
+# RUN pip install --upgrade -r requirements.txt
 
-COPY src/ .
+COPY dashboard/ .
 
 EXPOSE 5000
 
-CMD ["gunicorn", "-c", "gunicorn_config.py", "main:app"]
+CMD ["python", "__init__.py"]
+
+# CMD ["gunicorn", "-c", "gunicorn_config.py", "main:app"]
 
 # gunicorn -c gunicorn_config.py main:app

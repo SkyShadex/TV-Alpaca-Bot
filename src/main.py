@@ -1,23 +1,16 @@
 import json
 import logging
 from logging.handlers import TimedRotatingFileHandler
-import os
-import time
 import queue
 import threading
 import redis
 from threading import Lock, Thread
-import schedule
 from pytz import timezone
-import datetime as dt
 import tracemalloc
 import warnings
 import numpy as np
-from alpaca.common import exceptions
 
-from alpaca.trading.models import Order
 from alpaca.trading.requests import GetOrdersRequest
-from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from flask import (Flask, abort, jsonify, render_template,
                    render_template_string, request)
 from flask_caching import Cache
@@ -37,12 +30,11 @@ from flask_apscheduler import APScheduler
 
 
 app = Flask(__name__)
+# cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 logging.basicConfig(level=logging.INFO,stream=sys.stdout,filemode="a",format='%(asctime)s %(levelname)s:%(name)s:%(message)s') #filename="logs/py_log.log"
 redis_client = redis.Redis(host=str(config.DB_HOST), port=config.DB_PORT, decode_responses=True)
 # redis_client.bgsave()
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 
-# Declaring some variables
 accountInfo = api.get_account()
 order_lock = Lock()
 
@@ -51,7 +43,6 @@ s = None
 
 manager_scheduler = APScheduler()
 scheduler = APScheduler()
-# crypto_Schedule = APScheduler()
 warnings.simplefilter('ignore', np.RankWarning)
 
 def run_strat():
@@ -119,16 +110,9 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
         print(f"Pause Operations... {scheduler.state}")
         scheduler.pause()    
 
-
 start.startMessage(api.prod.get_account().buying_power, api.prod.get_account().non_marginable_buying_power, api.prod.get_account().daytrade_count) # type: ignore
 start.startMessage(accountInfo.buying_power, accountInfo.non_marginable_buying_power, accountInfo.daytrade_count) # type: ignore
-
-manageSchedules(TradingHours=True,OrderReset=False,equities=True,options=[True,True],portfolio=[True,True],onInit=True)    
-
-def check_alpaca_status():
-    if not api.check_alpaca_status():
-        logging.warning(jsonify({"error": "Alpaca API is currently unavailable"}), 503)
-        return jsonify({"error": "Alpaca API is currently unavailable"}), 503
+manageSchedules(TradingHours=True,OrderReset=False,equities=True,options=[True,True],portfolio=[True,True],onInit=True)  
 
 # Making the dashboard dynamic
 def fetch_orders():
@@ -146,152 +130,149 @@ def dashboard():
     account_info = fetch_account_info()
     return render_template('dashboard.html', alpaca_orders=orders, account_info=account_info)
 
-@app.route('/account', methods=['GET'])
-def account():    
-    payload = f'{accountInfo}'
-    pretty_json = json.dumps(payload, indent=4)
-    html = f"<pre>{pretty_json}</pre>"
-    return render_template_string(html)
+# @app.route('/account', methods=['GET'])
+# def account():    
+#     payload = f'{accountInfo}'
+#     pretty_json = json.dumps(payload, indent=4)
+#     html = f"<pre>{pretty_json}</pre>"
+#     return render_template_string(html)
 
-@app.route('/screen', methods=['GET'])
-def screen():
-    response = screener.test()
-    return jsonify(response)
+# @app.route('/screen', methods=['GET'])
+# def screen():
+#     response = screener.test()
+#     return jsonify(response)
 
-@app.route('/portfolio', methods=['GET'])
-def portDisplay():
-    portfolio_plot = 'portfolioperformance.png'
-    asset_plot = 'assetperformance.png'
-    portfolio.graph(plot_filename=portfolio_plot)
-    # da.dataCrunch(plot_filename=asset_plot)
-    return render_template('portfolio.html', portfolio_plot=portfolio_plot, asset_plot=portfolio_plot)
+# @app.route('/portfolio', methods=['GET'])
+# def portDisplay():
+#     portfolio_plot = 'portfolioperformance.png'
+#     asset_plot = 'assetperformance.png'
+#     portfolio.graph(plot_filename=portfolio_plot)
+#     # da.dataCrunch(plot_filename=asset_plot)
+#     return render_template('portfolio.html', portfolio_plot=portfolio_plot, asset_plot=portfolio_plot)
 
-file_path = 'logs/data.txt'
-lock_file_path = 'logs/lock.txt'
-post_buffer = queue.Queue()
-buffer_lock = threading.Lock()
-mt5_lock = Lock()
-mt5_queue = queue.Queue()
+# file_path = 'logs/data.txt'
+# lock_file_path = 'logs/lock.txt'
+# post_buffer = queue.Queue()
+# buffer_lock = threading.Lock()
+# mt5_lock = Lock()
+# mt5_queue = queue.Queue()
 
-@app.route("/snapshot")
-def snap():
-    global s
-    if not s:
-        s = tracemalloc.take_snapshot()
-        return "taken snapshot\n"
-    else:
-        lines = []
-        top_stats = tracemalloc.take_snapshot().compare_to(s, 'lineno')
-        for stat in top_stats[:5]:
-            lines.append(str(stat))
-        return "\n".join(lines)
-
-def process_post_requests():
-    while True:
-        try:
-            webhook_message = post_buffer.get(timeout=1)  # Wait for 1 second to get a message from the queue 
-        except queue.Empty:
-            continue  # If the queue is empty, continue waiting for messages
-        # Remove the lock file
-        #if os.path.isfile(lock_file_path):
-        #    os.remove(lock_file_path)
-        #logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
-        #logging.info('Webhook message received: %s', webhook_message)
-
-        # Process and Store Value
-        #mt5_queue.put(mt5.main(webhook_message))
-        data = mt5.main(webhook_message)
-        for x in range(5):
-            redis_client.lpush('orderHold',data)
-
-
-        # Check if the lock file exists
-        #if os.path.isfile(lock_file_path):
-        #   continue
-
-        # Create the lock file
-        #with open(lock_file_path, 'w') as lock_file:
-        #    lock_file.write('locked')
-        if False:
-            symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, stratID_WH = vars.webhook(webhook_message)
-            content = f"Strategy Alert [MT5]: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {stratID_WH}"
-            discord.message(content)
-
-# Start the background process for processing POST requests
-post_thread = Thread(target=process_post_requests)
-
-def get_file_content():
-    with open(file_path, 'r') as file:
-        return file.read()
-
-# @app.route('/mt5client', methods=['GET'])
-# def mt5client():
-#     # Check if there are orders available
-#     data = redis_client.lpop('orderHold')
-#     if data is None or True:
-#         #olddata = get_file_content()
-#         olddata = "No Order Found"
-#         response = {'message': olddata}
-#         return jsonify(response), 404
+# @app.route("/snapshot")
+# def snap():
+#     global s
+#     if not s:
+#         s = tracemalloc.take_snapshot()
+#         return "taken snapshot\n"
 #     else:
-#         response = {'file_content': data}
-#         return jsonify(response), 200
+#         lines = []
+#         top_stats = tracemalloc.take_snapshot().compare_to(s, 'lineno')
+#         for stat in top_stats[:5]:
+#             lines.append(str(stat))
+#         return "\n".join(lines)
 
-# def orderResults(webhook_message,side_WH):
-#     try:
-#         response = executionManager.executeOrder(webhook_message)
+# def process_post_requests():
+#     while True:
+#         try:
+#             webhook_message = post_buffer.get(timeout=1)  # Wait for 1 second to get a message from the queue 
+#         except queue.Empty:
+#             continue  # If the queue is empty, continue waiting for messages
+#         # Remove the lock file
+#         #if os.path.isfile(lock_file_path):
+#         #    os.remove(lock_file_path)
+#         #logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
+#         #logging.info('Webhook message received: %s', webhook_message)
 
-#         if isinstance(response, Order):
-#             orderInfo = vars.extract_order_response(response)
-#             content = f"Alpaca: Order executed successfully -|- {orderInfo['qty']} units of {orderInfo['symbol']} -|- Timestamp: {orderInfo['submitted_at']}"
+#         # Process and Store Value
+#         #mt5_queue.put(mt5.main(webhook_message))
+#         data = mt5.main(webhook_message)
+#         for x in range(5):
+#             redis_client.lpush('orderHold',data)
+
+
+#         # Check if the lock file exists
+#         #if os.path.isfile(lock_file_path):
+#         #   continue
+
+#         # Create the lock file
+#         #with open(lock_file_path, 'w') as lock_file:
+#         #    lock_file.write('locked')
+#         if False:
+#             symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, stratID_WH = vars.webhook(webhook_message)
+#             content = f"Strategy Alert [MT5]: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {stratID_WH}"
 #             discord.message(content)
-#             logging.info(content)
-#             return jsonify(message='Order executed successfully!', orderInfo=orderInfo)
 
-#     # Error Handling
-#     except exceptions.APIError as e: 
-#         error_message = f"Alpaca Error: {str(e)} for {side_WH} order"
-#         discord.message(error_message)
+# # Start the background process for processing POST requests
+# post_thread = Thread(target=process_post_requests)
 
-#         good_errors = ["position not found", "order not found", "is not active", "asset not found", "not tradable", "insufficient balance for USD"]
-#         if any(error in str(e) for error in good_errors):
-#             return jsonify(error=error_message), 200
-#         else:
-#             return jsonify(error=error_message), 500
+# def get_file_content():
+#     with open(file_path, 'r') as file:
+#         return file.read()
 
-# @app.route('/webhook', methods=['POST']) # type: ignore
-# def webhook():
-#     payload = request.data.decode("utf-8")
-#     start_index = payload.find('{')
-#     end_index = payload.rfind('}')
+# # @app.route('/mt5client', methods=['GET'])
+# # def mt5client():
+# #     # Check if there are orders available
+# #     data = redis_client.lpop('orderHold')
+# #     if data is None or True:
+# #         #olddata = get_file_content()
+# #         olddata = "No Order Found"
+# #         response = {'message': olddata}
+# #         return jsonify(response), 404
+# #     else:
+# #         response = {'file_content': data}
+# #         return jsonify(response), 200
 
-#     if start_index == -1 or end_index == -1 or end_index <= start_index:
-#         return {'code': 'error', 'message': 'Invalid payload'}
-#     extrainfo = payload[:start_index].strip()
-#     cleaned_payload = payload[start_index:end_index+1]
+# # def orderResults(webhook_message,side_WH):
+# #     try:
+# #         response = executionManager.executeOrder(webhook_message)
 
-#     webhook_message = json.loads(cleaned_payload)
+# #         if isinstance(response, Order):
+# #             orderInfo = vars.extract_order_response(response)
+# #             content = f"Alpaca: Order executed successfully -|- {orderInfo['qty']} units of {orderInfo['symbol']} -|- Timestamp: {orderInfo['submitted_at']}"
+# #             discord.message(content)
+# #             logging.info(content)
+# #             return jsonify(message='Order executed successfully!', orderInfo=orderInfo)
 
-#     #logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
-#     #logging.info('Webhook message received: %s', webhook_message)
+# #     # Error Handling
+# #     except exceptions.APIError as e: 
+# #         error_message = f"Alpaca Error: {str(e)} for {side_WH} order"
+# #         discord.message(error_message)
 
-#     if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
-#         return {'code': 'error', 'message': 'nice try buddy'}
+# #         good_errors = ["position not found", "order not found", "is not active", "asset not found", "not tradable", "insufficient balance for USD"]
+# #         if any(error in str(e) for error in good_errors):
+# #             return jsonify(error=error_message), 200
+# #         else:
+# #             return jsonify(error=error_message), 500
+
+# # @app.route('/webhook', methods=['POST']) # type: ignore
+# # def webhook():
+# #     payload = request.data.decode("utf-8")
+# #     start_index = payload.find('{')
+# #     end_index = payload.rfind('}')
+
+# #     if start_index == -1 or end_index == -1 or end_index <= start_index:
+# #         return {'code': 'error', 'message': 'Invalid payload'}
+# #     extrainfo = payload[:start_index].strip()
+# #     cleaned_payload = payload[start_index:end_index+1]
+
+# #     webhook_message = json.loads(cleaned_payload)
+
+# #     #logging.basicConfig(filename='logs/webhook.log', level=logging.INFO)
+# #     #logging.info('Webhook message received: %s', webhook_message)
+
+# #     if webhook_message['passphrase'] != config.WEBHOOK_PASSPHRASE:
+# #         return {'code': 'error', 'message': 'nice try buddy'}
     
-#     if "mt5" in extrainfo:
-#         with buffer_lock:
-#             post_buffer.put(webhook_message)
-#             response = "Request Buffered."
-#             return jsonify(response), 200
+# #     if "mt5" in extrainfo:
+# #         with buffer_lock:
+# #             post_buffer.put(webhook_message)
+# #             response = "Request Buffered."
+# #             return jsonify(response), 200
 
-#     symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, stratID_WH = vars.webhook(
-#         webhook_message)
-#     content = f"Strategy Alert: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {stratID_WH}"
-#     discord.message(content)
+# #     symbol_WH, side_WH, price_WH, quantity_WH, comment_WH, stratID_WH = vars.webhook(
+# #         webhook_message)
+# #     content = f"Strategy Alert: {side_WH}({comment_WH}) -|- {symbol_WH}: {quantity_WH} units @ {round(price_WH,3)} -|- Strategy ID: {stratID_WH}"
+# #     discord.message(content)
 
-#     with order_lock:
-#         orderResults(webhook_message,side_WH)
-
-if __name__ == '__main__':
-    app.run(host=config.LOCAL_HOST, port=config.LOCAL_PORT, debug=False)
-    post_thread.start()
+# #     with order_lock:
+# #         orderResults(webhook_message,side_WH)
+    
