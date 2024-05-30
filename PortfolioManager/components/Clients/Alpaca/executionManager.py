@@ -534,6 +534,6 @@ class ExecutionManager(threading.Thread):
         except Exception as e:
             logging.exception(e)
 
-# execution_manager = ExecutionManager()
-# order_thread = threading.Thread(target=execution_manager.process_orders)
-# order_thread.start()
+execution_manager = ExecutionManager()
+order_thread = threading.Thread(target=execution_manager.process_orders)
+order_thread.start()

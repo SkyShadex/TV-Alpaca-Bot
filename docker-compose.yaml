@@ -6,8 +6,8 @@ services:
       context: .
       dockerfile: ./src/Dockerfile
     env_file: vars.env
-    ports:
-      - "${LOCAL_PORT}:${LOCAL_PORT}"
+    # ports:
+    #   - "${LOCAL_PORT}:${LOCAL_PORT}"
     volumes:
       - .:/workspace:cached
     depends_on:
@@ -20,11 +20,24 @@ services:
       dockerfile: ./dashboard/Dockerfile
     env_file: vars.env
     ports:
-      - "6969:${LOCAL_PORT}"
+      - "${LOCAL_PORT}:${LOCAL_PORT}"
     volumes:
       - .:/workspace:cached
     depends_on:
       - redis
+
+  portfolio-manager:
+    build:
+      context: .
+      dockerfile: ./PortfolioManager/Dockerfile
+    env_file: vars.env
+    # ports:
+      # - "7845:${LOCAL_PORT}"
+    volumes:
+      - .:/workspace:cached
+    depends_on:
+      - redis
+    restart: on-failure:3
 
   redis:
     image: redis/redis-stack-server:latest

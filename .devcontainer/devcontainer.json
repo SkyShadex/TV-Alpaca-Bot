@@ -1,5 +1,5 @@
 {
-"name": "monolithic-container",
+"name": "trade-system-container",
 "service": "sky-alpaca-bot",
 "dockerComposeFile": ["../docker-compose.yaml"],
 "workspaceFolder": "/workspaceFolder",
@@ -10,8 +10,9 @@
 			"ms-python.vscode-pylance",
 			"ms-python.python",
 			"ms-azuretools.vscode-docker",
-			"L-I-V.mql-tools"
-			]
+			"L-I-V.mql-tools",
+			"wayou.vscode-todo-highlight"
+		]
 		}
 	}
 }

@@ -56,15 +56,6 @@ def run_opt():
 def run_hedge():
     opt = StrategyManager("HEDGE")
 
-# def run_pm(client):
-#     # current_time = dt.datetime.now(timezone('US/Eastern')).time()
-#     # if dt.time(18, 0) <= current_time or current_time <= dt.time(10,30):
-#     #     print('morning blockout for options')
-#     #     return
-#     pm = PortfolioManager()
-#     pm.rebalance(client=client)
-#     # opt = StrategyManager("OOI")
-
 def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
     if TradingHours:
         manager_scheduler.add_job(id='bod', func=scheduler.resume, trigger='cron', day_of_week='mon-fri', hour=8, minute=0, misfire_grace_time = None)
@@ -76,18 +67,6 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
             api.cancel_orders()
         manager_scheduler.add_job(id='reset_orders_1', func=api.prod.cancel_orders, trigger='cron', day_of_week='mon-fri', hour=8, minute=0, misfire_grace_time = None)
         manager_scheduler.add_job(id='reset_orders', func=api.cancel_orders, trigger='cron', day_of_week='mon-fri', hour=8, minute=0, misfire_grace_time = None)
-
-    if portfolio[0]:
-        if portfolio[1]:
-            scheduler.add_job(id='managePNL_init', func=managePNL)
-            scheduler.add_job(id='hedgeStrat_init', func=run_hedge)
-            # scheduler.add_job(id='options_metrics_init', func=da.calcPerformance)
-            # scheduler.add_job(id='rebalance_devtest', func=reversalDCA, args=[api.client['DEV']])
-        scheduler.add_job(id='managePNL_loop', func=managePNL, trigger='cron', day_of_week='mon-fri', minute='*/10', start_date='2024-03-25 13:15:00')
-        scheduler.add_job(id='options_metrics', func=da.calcPerformance, trigger='cron', day_of_week='mon-fri', hour=20, misfire_grace_time = None)
-        scheduler.add_job(id='rebalance_Dev', func=reversalDCA, trigger='cron', day_of_week='mon-fri', hour=13, minute=31, misfire_grace_time = None)  
-        scheduler.add_job(id='rebalance_Prod', func=reversalDCA, args=[api.client['LIVE']], trigger='cron', day_of_week='mon-fri', hour=19, misfire_grace_time = None)
-        # scheduler.add_job(id='rebalance_job_1', func=alpaca_rebalance, trigger='interval', minutes=1, start_date='2024-03-25 08:05:00')
 
     if options[0]:
         if onInit:

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    </head>
+    <body>
+        <div class="container">
+            <img src="static/alpaca_icon@1x.png" alt="Alpaca Icon" />
+            <h2>Alpaca Dashboard</h2>
+            <p>This is local</p>
+            
+            <div class="tab">
+                <button class="tab-button active" onclick="openTab('orders')">Orders</button>
+                <button class="tab-button" onclick="openTab('account')">Account</button>
+            </div>
+
+            <div id="orders" class="tab-content active">
+                <table>
+                    <tr>
+                        <th>Created</th>
+                        <th>Symbol</th>
+                        <th>Type</th>
+                        <th>Side</th>
+                        <th>Quantity</th>
+                        <th>Limit Price</th>
+                        <th>Filled Price</th>
+                    </tr>
+                    {% for order in alpaca_orders %}
+                    <tr>
+                        <td>{{ order.created_at }}</td>
+                        <td>{{ order.symbol }}</td>
+                        <td>{{ order.type }}</td>
+                        <td>{{ order.side }}</td>
+                        <td>{{ order.qty }}</td>
+                        <td>{{ order.limit_price }}</td>
+                        <td>{{ order.filled_avg_price }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+
+            <div id="account" class="tab-content">
+                {% if account_info %}
+                    <table>
+                    {% for item in account_info %}
+                        <tr>
+                            <th>{{ item[0] }}</th>
+                            <td>{{ item[1] }}</td>
+                        </tr>
+                    {% endfor %}
+                    </table>
+                {% else %}
+                    <p>No account information available.</p>
+                {% endif %}
+            </div>
+            
+        </div>
+        <script>
+            function openTab(tabName, event) {
+                var i, tabContent, tabButton;
+        
+                tabContent = document.getElementsByClassName("tab-content");
+                for (i = 0; i < tabContent.length; i++) {
+                    tabContent[i].style.display = "none";
+                }
+        
+                tabButton = document.getElementsByClassName("tab-button");
+                for (i = 0; i < tabButton.length; i++) {
+                    tabButton[i].className = tabButton[i].className.replace(" active", "");
+                }
+        
+                document.getElementById(tabName).style.display = "block";
+                event.currentTarget.className += " active";
+            }
+        </script>
+    </body>
+</html>
