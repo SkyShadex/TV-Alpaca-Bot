@@ -105,6 +105,11 @@ def parse_orders(orders):
         order_df.id = order_df.id.astype(str)
         order_df.symbol = order_df.symbol.astype(str)
         order_df.status = order_df.status.astype(str)
+        order_df.submitted_at = pd.to_datetime(order_df['submitted_at'], utc=True)
+        order_df.filled_at = pd.to_datetime(order_df['filled_at'], utc=True)
+        order_df.expired_at = pd.to_datetime(order_df['expired_at'], utc=True)
+        order_df.canceled_at = pd.to_datetime(order_df['canceled_at'], utc=True)
+        order_df.failed_at = pd.to_datetime(order_df['failed_at'], utc=True)
         return order_df
 
 def get_params(start_date, end_date=datetime.today()):
