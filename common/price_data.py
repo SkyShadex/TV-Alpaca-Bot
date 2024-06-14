@@ -105,13 +105,14 @@ def get_ohlc_alpaca(symbols: str|list[str], lookback: int, timeframe: TimeFrame=
             if not old_price_data.empty:
                 daterange = (old_price_data['date'].max() - old_price_data['date'].min()).days
                 if daterange >= 100:
-                    logging.debug(f'OHLCV_{symbols[0]}_{str(timeframe)} [CACHED]',daterange)
+                    logging.debug(f'OHLCV:{symbols[0]}:{str(timeframe)} [CACHED]',daterange)
                     lookback = min(10,lookback)
                     oldFound = True
                     date_err = False
                 else:
-                    print(f'OHLCV_{symbols[0]}_{str(timeframe)} [NEW]',daterange)
-                    lookback = 365*3 if tf.endswith("Day") else int(365*1.5)
+                    print(f'OHLCV:{symbols[0]}:{str(timeframe)} [NEW]',daterange)
+                    lookback = max(365*3,lookback) if tf.endswith("Day") else max(365*1.5,lookback)
+                    lookback = int(lookback)
                     date_err = False
     
     all_ohlcv = []
@@ -210,11 +211,11 @@ def store_ohlcv_db(ohlcv,symbol,timeframe,cached=True):
     ts = redis_client.ts()
     def store_ohlcv_TS(row):
         labels = {col: str(row[col]) for col in row.index}
-        ts.add(f'TS-OHLCV_{row.symbol}_{str(timeframe)}',int(row.name.timestamp() * 1000),float(row.close),labels=labels,duplicate_policy='last')
+        ts.add(f'TS-OHLCV:{row.symbol}:{str(timeframe)}',int(row.name.timestamp() * 1000),float(row.close),labels=labels,duplicate_policy='last')
         ...    
 
 
-    KEY = f'OHLCV_{symbol}_{str(timeframe)}'
+    KEY = f'OHLCV:{symbol}:{str(timeframe)}'
     UTC_TIMEZONE = pytz.timezone('UTC')
     try:
         price_data_old_json = redis_client.get(KEY)
@@ -233,7 +234,7 @@ def store_ohlcv_db(ohlcv,symbol,timeframe,cached=True):
                 price_data_complete.apply(store_ohlcv_TS,axis=1)
             price_data_complete['isGap'] = ~(price_data_complete['close'].shift(1).between(price_data_complete['low'], price_data_complete['high']))
             gappc = round(price_data_complete['isGap'].sum()/len(price_data_complete['isGap']),2)
-            redis_client.hset(f'price_metrics_gappc',key=symbol,value=gappc)
+            redis_client.hset(f'asset:metrics:gappc',key=symbol,value=gappc)
             price_data_complete_json = price_data_complete.to_json(orient='records')
             redis_client.set(KEY,price_data_complete_json,ex=12*3600)
             ohlcv_new = price_data_complete.copy()
@@ -251,7 +252,7 @@ def store_ohlcv_db(ohlcv,symbol,timeframe,cached=True):
 
 def retrieve_ohlcv_db(symbol,timeframe):
     redis_client = redis.Redis(host=str(config.DB_HOST), port=config.DB_PORT, decode_responses=True)
-    KEY = f'OHLCV_{symbol}_{str(timeframe)}'
+    KEY = f'OHLCV:{symbol}:{str(timeframe)}'
     UTC_TIMEZONE = pytz.timezone('UTC')
     try:
         price_data_old_json = redis_client.get(KEY)
@@ -270,7 +271,7 @@ def retrieve_ohlcv_db(symbol,timeframe):
     
 def randomStats(db_client: redis.Redis = None):
     # db_client = redis.Redis(host=str(config.DB_HOST), port=config.DB_PORT, decode_responses=True)
-    metrics = db_client.hgetall("price_metrics_gappc")
+    metrics = db_client.hgetall("asset:metrics:gappc")
     metrics = {str(symbol): float(data) for symbol, data in metrics.items()}
     metrics_df = pd.DataFrame(metrics.items(), columns=['symbol', 'priceGaps_to_totalBars'])
     metrics_df.set_index('symbol', inplace=True)
