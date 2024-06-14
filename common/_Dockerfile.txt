@@ -1,0 +1,9 @@
+FROM busybox
+
+# # Set the build context directory for debugging
+# COPY ./src /build-context
+# WORKDIR /build-context
+
+# CMD ["sh", "-c", "cp -r /build-context/* /workspace/common"]
+
+
