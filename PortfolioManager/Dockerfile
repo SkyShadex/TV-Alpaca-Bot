@@ -13,8 +13,7 @@ RUN pip install -r requirements.txt
 # RUN pip install --upgrade -r requirements.txt
 
 COPY PortfolioManager/ .
-
-EXPOSE 5000
+COPY common/ ./common
 
 CMD ["python", "__init__.py"]
 

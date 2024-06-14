@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 import pandas as pd
 from alpaca.trading.models import Position, Order
+import logging
 
 # Set Alpaca Trading API
 base_url = 'https://paper-api.alpaca.markets'
@@ -22,29 +23,32 @@ start_date = datetime(2024, 4, 1)
 
 def parse_positions(positions,commissions=0.5*2*3):
     formatted_data = []
-    for position in positions:
-        data = {
-            'asset_id': str(position.asset_id),
-            'asset_class' : str(position.asset_class),
-            'symbol': str(position.symbol),
-            'qty': float(position.qty),
-            'side': str(position.side),
-            'avg_entry_price': float(position.avg_entry_price),
-            'market_value': float(position.market_value),
-            'cost_basis': float(position.cost_basis),
-            'unrealized_pl': float(position.unrealized_pl),
-            'unrealized_plpc': float(position.unrealized_plpc),
-            'unrealized_intraday_pl': float(position.unrealized_intraday_pl),
-            'unrealized_intraday_plpc': float(position.unrealized_intraday_plpc),
-            'current_price': float(position.current_price),
-            'lastday_price': float(position.lastday_price),
-            'change_today': float(position.change_today),
-            'swap_rate': float(position.swap_rate) if position.swap_rate is not None else 0.0,
-            'avg_entry_swap_rate': float(position.avg_entry_swap_rate) if position.avg_entry_swap_rate is not None else 0.0,
-            'usd': float(position.usd) if position.usd is not None else 0.0,
-            'qty_available': float(position.qty_available)
-        }
-        formatted_data.append(data)
+    try:
+        for position in positions:
+            data = {
+                'asset_id': str(position.asset_id),
+                'asset_class' : str(position.asset_class),
+                'symbol': str(position.symbol),
+                'qty': float(position.qty),
+                'side': str(position.side),
+                'avg_entry_price': float(position.avg_entry_price),
+                'market_value': float(position.market_value) if position.market_value is not None else 0.0,
+                'cost_basis': float(position.cost_basis),
+                'unrealized_pl': float(position.unrealized_pl) if position.unrealized_pl is not None else 0.0,
+                'unrealized_plpc': float(position.unrealized_plpc) if position.unrealized_plpc is not None else 0.0,
+                'unrealized_intraday_pl': float(position.unrealized_intraday_pl) if position.unrealized_intraday_pl is not None else 0.0,
+                'unrealized_intraday_plpc': float(position.unrealized_intraday_plpc) if position.unrealized_intraday_plpc is not None else 0.0,
+                'current_price': float(position.current_price) if position.current_price is not None else 0.0,
+                'lastday_price': float(position.lastday_price) if position.lastday_price is not None else 0.0,
+                'change_today': float(position.change_today) if position.change_today is not None else 0.0,
+                'swap_rate': float(position.swap_rate) if position.swap_rate is not None else 0.0,
+                'avg_entry_swap_rate': float(position.avg_entry_swap_rate) if position.avg_entry_swap_rate is not None else 0.0,
+                'usd': float(position.usd) if position.usd is not None else 0.0,
+                'qty_available': float(position.qty_available)
+            }
+            formatted_data.append(data)
+    except Exception as e:
+        logging.exception(f"{data}: {e}")
 
     posdf = pd.DataFrame(formatted_data)
     numeric_cols = ['qty', 'market_value', 'cost_basis','avg_entry_price', 'unrealized_pl', 

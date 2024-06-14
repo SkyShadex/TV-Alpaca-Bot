@@ -8,9 +8,9 @@ from alpaca.trading.requests import (ClosePositionRequest, GetOrdersRequest,
 
 
 import config
-from commons import vars
-from components.Clients.Alpaca.api_alpaca import api
-from components.Clients.Alpaca.price_data import get_ohlc_alpaca
+from common import vars
+from common.api_alpaca import api
+from common.price_data import get_ohlc_alpaca
 from sklearn.preprocessing import MinMaxScaler
 from alpaca.data.historical.option import OptionHistoricalDataClient
 from alpaca.data.requests import OptionChainRequest

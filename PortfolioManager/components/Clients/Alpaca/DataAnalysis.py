@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 from alpaca.trading.requests import GetOrdersRequest
 from alpaca.broker.requests import GetAccountActivitiesRequest
 import time
-from commons import vars
-from components.Clients.Alpaca.api_alpaca import api
+from common import vars
+from common.api_alpaca import api
 from alpaca.broker.client import BrokerClient
 import pandas as pd
 import numpy as np
@@ -196,11 +196,12 @@ def plotOptionsMetrics(grouped_data):
     fig.suptitle(f"Options Performance Analysis. Estimated P/L: {grouped_data.net_PnL.sum():.2f}", fontsize=16)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
-    static_path = 'logs/graphs'
+    static_path = 'data/graphs'
     os.makedirs(static_path, exist_ok=True)
     filename = f'options_subplots_dviz_{current_time.strftime("%Y-%m-%d_%H-%M-%S")}.png'
     file_path = os.path.join(static_path, filename)
     plt.savefig(file_path)
+
     plt.close()
 
 def collectOrders():

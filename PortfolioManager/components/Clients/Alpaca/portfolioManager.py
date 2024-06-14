@@ -1,9 +1,10 @@
 from alpaca.trading.requests import GetOrdersRequest, MarketOrderRequest
-from components.Clients.Alpaca.api_alpaca import api
-from components.Clients.Alpaca.portfolio import parse_positions
-from components.Clients.Alpaca.executionManager import exitOrder,optionsOrder,execution_manager,SkyOrder
+from common.api_alpaca import api
+from components.Clients.Alpaca.portfolio import parse_positions, parse_orders
+from components.Clients.Alpaca.executionManager import execution_manager as em
+from components.Clients.Alpaca.executionManager import exitOrder,optionsOrder,SkyOrder
 from components.Clients.Alpaca.Strategy.OptionsOI import Strategy_PricingModel
-from components.Clients.Alpaca.price_data import get_latest_quote
+from common.price_data import get_latest_quote
 from pytz import timezone
 import datetime as dt
 import numpy as np
@@ -24,7 +25,6 @@ def initialize_globals():
     # Set initial highest_equity in Redis
     redis_client.set('highest_equity_date', str(dt.date.today()))
     redis_client.set('highest_equity', float(api.get_account().last_equity)) #type: ignore
-    redis_client.set('portfolio_delta', 0)
 
 initialize_globals()
 
@@ -84,24 +84,25 @@ def manageOptions(client, pos):
                         limit_orders.append((row.symbol, res[1], min(row.qty_available, volume)))
 
             except Exception as e:
-                if "Missing Underlying Price Data" in str(e):
+                if "Missing Underlying Price Data" in str(e) or "Too few contracts to compute" in str(e):
                     logging.warning(f"[{manageOptions.__name__}] Error processing symbol {row.symbol}: {e}")
                     continue
                 else:
+                    logging.warning(f"[{manageOptions.__name__}] Error processing symbol {row.symbol}: {e}")
                     raise
 
         if portfolio_delta:
             portfolio_delta_sum = float(sum(portfolio_delta))
-            redis_key = 'portfolio_delta_live' if client is api.client['LIVE'] else 'portfolio_delta'
-            redis_client.set(redis_key, portfolio_delta_sum)
+            redis_client.set('portfolio_delta_live' if client is api.client['LIVE'] else 'portfolio_delta', portfolio_delta_sum)
+            key = 'LIVE' if client is api.client['LIVE'] else 'DEV'
+            redis_client.hset('portfolio_deltas',str(key), str(portfolio_delta_sum))
 
         if limit_orders or stoploss_orders:
             print("Positions found to close")
-            print(f"Portfolio delta: {sum(portfolio_delta):.2f}")
 
             for symbol in stoploss_orders:
                 try:
-                    execution_manager.push_order_db(order=SkyOrder(client=client,symbol=symbol,order_type="exit",order_memo=f"Stop Loss hit for {symbol}"))
+                    em.push_order_db(order=SkyOrder(client=client,symbol=symbol,order_type="exit",order_memo=f"Stop Loss hit for {symbol}"))
                     exitOrder(symbol, client)
                     print(f"Stop Loss hit for {symbol}")
                 except Exception as e:
@@ -113,7 +114,7 @@ def manageOptions(client, pos):
 
             for symbol, take_profit, quantity in limit_orders:
                 try:
-                    execution_manager.push_order_db(order=SkyOrder(client=client,symbol=symbol,order_type="limit",order_memo=symbol,side='sell',quantity=quantity))
+                    em.push_order_db(order=SkyOrder(client=client,symbol=symbol,order_type="limit",order_memo=symbol,side='sell',quantity=quantity))
                     optionsOrder(symbol, take_profit, orderID=symbol, client=client, quantity=quantity, side='sell', isMarketOrder=False)
                 except Exception as e:
                     if "options market orders are only allowed during market hours" in str(e):
@@ -135,12 +136,12 @@ def checkPrices(row):
         opm.getData(base_symbol,startoffset=max(days_to_expiry-15,1),maxTime=days_to_expiry+15,limit=100)
         opm.fitModel()
         modeled_price,delta = opm.forecast(strike_price,days_to_expiry,option_type)
-
+        time.sleep(1)
         quote = get_latest_quote(row.symbol,'options').iloc[0]
         if quote.bid_price == 0.0 or quote.mid_price == 0.0:
             logging.warning(f'Missing Quote Data {row.symbol} {quote.bid_price} {quote.mid_price}')
             return [False,0.0,False,delta]
-
+        
         # hotfix for alpaca options contract rounding error
         # if row.unrealized_plpc >= 10: #row.cost_per_unit < 0.01 and row.cost_per_unit != 0.0:
         #     row.cost_per_unit = round(100*row.cost_per_unit,2)
@@ -156,8 +157,8 @@ def checkPrices(row):
         # target_spread = np.abs(opm.target_spread)
         time_exit = days_to_expiry < 4
         badDelta = np.abs(delta) < 0.2
-        stoploss = max(liquid_plpc_mid,liquid_plpc_worst) < api.adjustmentTimed(startValue=-0.7,finalValue=-0.9,startDate=dt.datetime(2024, 5, 23),period=30)
-        pnl = max(liquid_plpc_mid,liquid_plpc_worst) > api.adjustmentTimed(startValue=2.0,finalValue=3.0,startDate=dt.datetime(2024, 5, 23),period=30) # and quote.mid_price >= modeled_price ///// previously needed to check midprice to place safer market orders. switched to limit orders. also changed to vw_midprice
+        # stoploss = max(liquid_plpc_mid,liquid_plpc_worst) < api.adjustmentTimed(startValue=-0.7,finalValue=-0.9,startDate=dt.datetime(2024, 5, 23),period=30)
+        pnl = max(liquid_plpc_mid,liquid_plpc_worst) > 1.5#api.adjustmentTimed(startValue=2.0,finalValue=3.0,startDate=dt.datetime(2024, 5, 23),period=30) # and quote.mid_price >= modeled_price ///// previously needed to check midprice to place safer market orders. switched to limit orders. also changed to vw_midprice
         marketOrder = time_exit
         reason = "delta" if badDelta else "time" if time_exit else "stoploss"
         sell = marketOrder or pnl
@@ -233,7 +234,7 @@ def reversalDCA(client=api.client['DEV'],exposure_Target=0.05):
                 time_in_force='day',
                 )             
             try:
-                execution_manager.push_order_db(order=SkyOrder(client=client, symbol=symbol, order_type="dca", order_memo=symbol, side=side, quantity=qty))
+                em.push_order_db(order=SkyOrder(client=client, symbol=symbol, order_type="dca", order_memo=symbol, side=side, quantity=qty))
                 client.submit_order(orderData)
                 logging.info(f"{symbol},{exposure_Ratio:.3f},{adjustment_factor:.3f},{quantity_diff:.3f},{direction},{side}")
                 return True
@@ -263,14 +264,12 @@ class PortfolioManager():
         self.short_allocation = self.riskfreerate+self.short_interest_rate+self.long_bias+1
         self.base_risk = config.RISK_EXPOSURE
         self.client = client
-        self.update_values(client)
-        self.update_instruments(client)
-
-
+        self.update_values(self.client)
+        self.update_instruments(self.client)
 
     def update_values(self,client = api.client['DEV']):
-        key = 'portfolio_delta_live' if client is api.client['LIVE'] else 'portfolio_delta'
-        self.portfolio_delta = float(redis_client.get(key) or 0.0) #type: ignore
+        key = 'portfolio_delta_live' if client is api.client['LIVE'] else 'portfolio_delta_dev'
+        self.portfolio_delta = float(redis_client.hget('portfolio_deltas',str('LIVE' if client is api.client['LIVE'] else 'DEV')) or 0.0) #type: ignore
 
         acct_info = client.get_account()
         if not acct_info:
@@ -292,18 +291,23 @@ class PortfolioManager():
         return True
 
     def update_holdings(self,client = api.client['DEV']):
-        pos_raw = client.get_all_positions()    
-        if not pos_raw:
-            self.positions = pd.DataFrame()
-            return False
+        pos_raw = client.get_all_positions()
+        self.positions = pd.DataFrame()    
+        if pos_raw:
+            self.positions = parse_positions(pos_raw) #TODO: handle error when positions is empty but class variable now exists
         
-        self.positions = parse_positions(pos_raw) #TODO: handle error when positions is empty but class variable now exists
-        if self.positions.empty:
+        # open_orders = client.get_orders(filter=GetOrdersRequest(status='open',limit=500,after=dt.datetime.now() - dt.timedelta(hours=36))) # type: ignore
+        # self.orders = pd.DataFrame()   
+        # if open_orders:
+        #     self.orders = parse_orders(open_orders)
+        
+        if self.positions.empty or not pos_raw:
+            logging.info(f"no positions found")
             return False
         
         posdf_json = self.positions.to_json(orient='records')
-        key = 'current_positions_LIVE' if client is api.client['LIVE'] else 'current_positions_DEV'
-        redis_client.set(key, posdf_json)
+        redis_client.set('current_positions_LIVE' if client is api.client['LIVE'] else 'current_positions_DEV', posdf_json)
+        redis_client.hset('portfolio_positions','LIVE' if client is api.client['LIVE'] else 'DEV', posdf_json)
         return True
     
     def update_instruments(self,client = api.client['DEV']):
@@ -316,10 +320,10 @@ class PortfolioManager():
             options = self.positions.loc[self.positions['asset_class'].str.contains("us_option",case=False)].copy()
             cost_OP = options.cost_basis.abs().to_numpy()
 
-            # hotfix for alpaca options rounding error
-            hotfix = options.unrealized_plpc.to_numpy()
-            if hotfix.any() > 10:
-                cost_OP *= 100
+            # # hotfix for alpaca options rounding error
+            # hotfix = options.unrealized_plpc.to_numpy()
+            # if hotfix.any() > 10:
+            #     cost_OP *= 100
 
             op_ratio = cost_OP.sum()/cost_EQ.sum()
             if op_ratio == 0:
@@ -336,6 +340,93 @@ class PortfolioManager():
         except Exception as e:
             logging.exception(f"{self.update_instruments.__name__}")
             return False
+
+    def parseSignals(self):
+        client = self.client
+        strat = "tsmom"
+        signals = redis_client.hgetall('strategy-signals_tsmom')
+        if signals is None:
+            return
+        
+        starttime = dt.datetime.now()
+        print(f'Portfolio Signals Sweep...')
+        try:
+            self.update_values(client)
+            self.update_holdings(client)
+            time.sleep(5)
+
+            weights = redis_client.hgetall('portfolio_weights')
+            weights_df = pd.Series(weights)
+            # logging.info(weights_df.head())
+
+            signals_dict = {symbol: json.loads(signal) for symbol, signal in signals.items()}
+            signals_df = pd.DataFrame(signals_dict).T
+            signals_df.signal = signals_df.signal.astype(int)
+            # active_signals = signals_df.loc[signals_df.signal != 0].copy()
+            # inactive_signals = signals_df.loc[signals_df.signal == 0].copy()
+
+            # logging.info(f'{len(active_signals)} {len(inactive_signals)}')
+            # logging.info(active_signals.head())
+
+
+            equities = self.positions.loc[~self.positions['asset_class'].str.contains("us_option",case=False)].copy()
+            open_orders = client.get_orders(filter=GetOrdersRequest(status='open',limit=500,after=dt.datetime.now() - dt.timedelta(hours=36)))
+            orders = pd.DataFrame()
+            if open_orders:
+                orders = parse_orders(open_orders)
+                
+
+            def placeOrders(row,orders,pos):
+                side = 'buy' if row.signal == 1 else 'sell' if row.signal == -1 else 'none'
+                symbol = row.name
+
+                if not orders.empty:
+                    match = orders.loc[(orders['symbol'].str.contains(symbol,case=False)) & (orders['symbol'].str.len() == len(symbol))] # type: ignore
+                    if not match.empty:
+                        return False
+
+                if not pos.empty:
+                    match_pos = pos.loc[pos.symbol.str.contains(symbol,case=False) & (pos['symbol'].str.len() == len(symbol))].copy()
+                    if not match_pos.empty:
+                        match_pos = match_pos.iloc[-1]
+                        if abs(match_pos.unrealized_plpc) < 0.05: # to reduce turnover
+                            return False
+                        if match_pos.qty_available == 0.0:
+                            return False 
+                        if ('short' in match_pos.side.lower() and side == 'sell') or ('long' in match_pos.side.lower() and side == 'buy'):
+                            return False
+                        em.push_order_db(order=SkyOrder(client=self.client,symbol=symbol,order_type="exit",order_memo=f"{strat}:{row.signal}:flip:{symbol}"))
+                
+                if (self.client is api.client['LIVE'] and side == 'sell') or side == 'none':
+                    return False
+
+                quote = get_latest_quote(symbol)
+                time.sleep(1.5)
+                price = quote['mid_price'].iloc[0]
+                weight = float(weights_df[symbol])
+
+                if side == 'sell':
+                    weight *= self.ls_ratio * self.stock_allocation
+                else:
+                    weight *= self.stock_allocation
+                quantity = max((self.buyingpower * config.RISK_EXPOSURE * weight),1.1) / price
+                if side == 'sell':
+                    quantity = max(int(quantity),1) # short positions can't be fractional
+
+                if side == 'sell' or side == 'buy':    
+                    em.push_order_db(order=SkyOrder(client=self.client,symbol=symbol,side=side,order_type="market",price=price,quantity=quantity,order_memo=f"{strat}:{row.signal}:{symbol}",weight=weight))
+                    return True
+                
+                return False
+                
+            signals_df.apply(placeOrders,args=(orders,equities),axis=1)
+        except (KeyError,ValueError,TypeError,Exception) as e:
+            logging.info(e)
+        finally:
+            elapsed_time = (dt.datetime.now() - starttime).total_seconds() // 60
+            print(f'Portfolio Signals Sweep Complete ({elapsed_time} mins)...')
+
+
 
     def rebalance(self,client=api.client['DEV']):
         if not (self.update_holdings(client=client) and self.update_values(client=client)):
