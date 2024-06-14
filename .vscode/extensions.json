@@ -1,0 +1,7 @@
+{
+    "recommendations": [
+        "gruntfuggly.todo-tree",
+        "ms-python.isort",
+        "formulahendry.docker-extension-pack"
+    ]
+}

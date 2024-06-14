@@ -1,8 +1,9 @@
 {
 "name": "trade-system-container",
-"service": "sky-alpaca-bot",
+"service": "dashboard",
+// "runServices": ["dashboard"],
 "dockerComposeFile": ["../docker-compose.yaml"],
-"workspaceFolder": "/workspaceFolder",
+"workspaceFolder": "/${containerWorkspaceFolderBasename}",
 "shutdownAction": "none",
 "customizations": {
 	"vscode": {
@@ -10,8 +11,9 @@
 			"ms-python.vscode-pylance",
 			"ms-python.python",
 			"ms-azuretools.vscode-docker",
-			"L-I-V.mql-tools",
-			"wayou.vscode-todo-highlight"
+			"Gruntfuggly.todo-tree",
+			"ms-python.isort",
+			"formulahendry.docker-extension-pack"
 		]
 		}
 	}

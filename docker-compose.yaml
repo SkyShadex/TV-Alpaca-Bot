@@ -1,19 +1,10 @@
 version: '3.8'
 
-services:
-  sky-alpaca-bot:
-    build:
-      context: .
-      dockerfile: ./src/Dockerfile
-    env_file: vars.env
-    # ports:
-    #   - "${LOCAL_PORT}:${LOCAL_PORT}"
-    volumes:
-      - .:/workspace:cached
-    depends_on:
-      - redis
-    restart: on-failure:3
-  
+volumes:
+  redis-data:
+  graphs:
+
+services:    
   dashboard:
     build:
       context: .
@@ -23,32 +14,78 @@ services:
       - "${LOCAL_PORT}:${LOCAL_PORT}"
     volumes:
       - .:/workspace:cached
+      - graphs:/app/data/graphs
+      - graphs:/app/static/data/graphs
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    restart: on-failure:3
+
+  strategy-manager:
+    build:
+      context: .
+      dockerfile: ./StrategyManager/Dockerfile
+    env_file: vars.env
+    volumes:
+      - .:/workspace:cached
+      - graphs:/app/data/graphs
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: on-failure:3
 
   portfolio-manager:
     build:
       context: .
       dockerfile: ./PortfolioManager/Dockerfile
     env_file: vars.env
-    # ports:
-      # - "7845:${LOCAL_PORT}"
+    expose:
+      - "5000"
     volumes:
       - .:/workspace:cached
+      - graphs:/app/data/graphs
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    restart: on-failure:3
+
+  risk-manager:
+    build:
+      context: .
+      dockerfile: ./RiskManager/Dockerfile
+    env_file: vars.env
+    volumes:
+      - .:/workspace:cached
+      - graphs:/app/data/graphs
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: on-failure:3
 
   redis:
-    image: redis/redis-stack-server:latest
+    image: redis/redis-stack:latest
     env_file: vars.env
     ports:
-      - "${DB_PORT}:${DB_PORT}"
+      - "8001:8001"
+    expose:
+      - "${DB_PORT}"
     hostname: "${DB_HOST}"
     volumes:
       - redis-data:/data
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      interval: 1s
+      timeout: 3s
+      retries: 5
   
 
-volumes:
-  redis-data:
+  # init-common:
+  #   build:
+  #     context: ./common
+  #     dockerfile: Dockerfile
+  #   volumes:
+  #     - common:/workspace/common
+
+        # init-common:
+      #   condition: service_completed_successfully

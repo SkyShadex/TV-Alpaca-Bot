@@ -21,6 +21,7 @@ scipy
 scikit-learn
 pykalman
 arch
+yfinance
 #MetaTrader5
 #tradingview-screener
 #git+https://github.com/AI4Finance-Foundation/FinRL.git
