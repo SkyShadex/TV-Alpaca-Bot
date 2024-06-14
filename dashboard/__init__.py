@@ -1,3 +1,4 @@
-import os
+from os import system
+from time import sleep
 
-os.system("gunicorn -c gunicorn_config.py main:app")
+system("gunicorn -c gunicorn_config.py main:app")
