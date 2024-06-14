@@ -30,8 +30,9 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
         master_scheduler.add_job(id='eod', func=scheduler.pause, trigger='cron', day_of_week='mon-fri', hour=20, minute=5,misfire_grace_time = None)
 
     if equities:
-        # if onInit:
-        #     scheduler.add_job(id='risk_manager_init', func=run_strat2)
+        if onInit:
+            # scheduler.add_job(id='risk_manager_init', func=run_strat2)
+            ...
         scheduler.add_job(id='risk_manager_loop', func=run_strat, trigger='cron', day_of_week='mon-fri', hour='*/2', start_date='2024-03-25 08:00:00', max_instances=1)
         scheduler.add_job(id='risk_manager_loop2', func=run_strat2, trigger='cron', day_of_week='mon-fri', day='*/1', start_date='2024-03-25 08:00:00', max_instances=1)
 
