@@ -196,7 +196,7 @@ def plotOptionsMetrics(grouped_data):
     fig.suptitle(f"Options Performance Analysis. Estimated P/L: {grouped_data.net_PnL.sum():.2f}", fontsize=16)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
-    static_path = 'data/graphs'
+    static_path = 'data/graphs/options'
     os.makedirs(static_path, exist_ok=True)
     filename = f'options_subplots_dviz_{current_time.strftime("%Y-%m-%d_%H-%M-%S")}.png'
     file_path = os.path.join(static_path, filename)
