@@ -2,37 +2,41 @@ import json
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import redis
-import numpy as np
-
 from alpaca.trading.requests import GetOrdersRequest
-from flask import (Flask, render_template)
-from components.Clients.Alpaca import executionManager, portfolio
-
+from flask import Flask,render_template
 import sys
-import config
-from commons import start
-from components.Clients.Alpaca.api_alpaca import api
-from components.Clients.Alpaca import DataAnalysis as da
+from common import config
+from common.api_alpaca import api
+from components.Clients.Alpaca.Strategy.RiskManager import RiskManager
 from flask_apscheduler import APScheduler
 
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO,stream=sys.stdout,filemode="a",format='%(asctime)s %(levelname)s:%(name)s:%(message)s') #filename="logs/py_log.log"
 redis_client = redis.Redis(host=str(config.DB_HOST), port=config.DB_PORT, decode_responses=True)
-accountInfo = api.get_account()
 
-manager_scheduler = APScheduler()
+master_scheduler = APScheduler()
 scheduler = APScheduler()
+
+def run_strat():
+    universe = RiskManager('weights')
+
+def run_strat2():
+    universe = RiskManager('metadata')
 
 def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
     if TradingHours:
-        manager_scheduler.add_job(id='bod', func=scheduler.resume, trigger='cron', day_of_week='mon-fri', hour=8, minute=0, misfire_grace_time = None)
-        manager_scheduler.add_job(id='eod', func=scheduler.pause, trigger='cron', day_of_week='mon-fri', hour=20, minute=5,misfire_grace_time = None)
+        master_scheduler.add_job(id='bod', func=scheduler.resume, trigger='cron', day_of_week='mon-fri', hour=8, minute=0, misfire_grace_time = None)
+        master_scheduler.add_job(id='eod', func=scheduler.pause, trigger='cron', day_of_week='mon-fri', hour=20, minute=5,misfire_grace_time = None)
 
-    scheduler.add_job(id='options_metrics', func=da.calcPerformance, trigger='cron', day_of_week='mon-fri', hour=20, misfire_grace_time = None)
+    if equities:
+        # if onInit:
+        #     scheduler.add_job(id='risk_manager_init', func=run_strat2)
+        scheduler.add_job(id='risk_manager_loop', func=run_strat, trigger='cron', day_of_week='mon-fri', hour='*/2', start_date='2024-03-25 08:00:00', max_instances=1)
+        scheduler.add_job(id='risk_manager_loop2', func=run_strat2, trigger='cron', day_of_week='mon-fri', day='*/1', start_date='2024-03-25 08:00:00', max_instances=1)
 
-    manager_scheduler.init_app(app)
-    manager_scheduler.start()
+    master_scheduler.init_app(app)
+    master_scheduler.start()
     scheduler.init_app(app)
     scheduler.start()
 
@@ -40,33 +44,20 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
         print(f"Pause Operations... {scheduler.state}")
         scheduler.pause()    
 
-manageSchedules(TradingHours=False,OrderReset=False,equities=True,options=[True,True],portfolio=[True,True],onInit=True)  
+manageSchedules(TradingHours=True,OrderReset=False,equities=True,options=[True,True],portfolio=[True,True],onInit=True)  
 
-# Making the dashboard dynamic
-def fetch_orders():
-    orderParams = GetOrdersRequest(status='all', limit=100, nested=True) # type: ignore
-    orders = api.get_orders(filter=orderParams)
-    return orders
+# # Making the dashboard dynamic
+# def fetch_orders():
+#     orderParams = GetOrdersRequest(status='all', limit=100, nested=True) # type: ignore
+#     orders = api.get_orders(filter=orderParams)
+#     return orders
 
-def fetch_account_info():
-    return api.get_account()
+# def fetch_account_info():
+#     return api.get_account()
 
-# Flask Routes
-@app.route('/')
-def dashboard():
-    orders = fetch_orders()
-    account_info = fetch_account_info()
-    return render_template('dashboard.html', alpaca_orders=orders, account_info=account_info)
-
-
-''''
-Risk manager gathers risk metrics
-
-Portfolio risk and Strategy risk
-
-Post metrics back to DB for entry and exit logic
-
-Push weights for smaller balanced portfolio's
-
-HERC, but Cluster Universe to add another layer of diverisifcation
-'''
+# # Flask Routes
+# @app.route('/')
+# def dashboard():
+#     orders = fetch_orders()
+#     account_info = fetch_account_info()
+#     return render_template('dashboard.html', alpaca_orders=orders, account_info=account_info)
