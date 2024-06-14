@@ -11,7 +11,6 @@ from alpaca.trading.requests import GetOrdersRequest
 from flask import (Flask, jsonify, render_template,
                    render_template_string, request)
 from flask_caching import Cache
-from components.Clients.Alpaca import portfolio
 import requests
 import sys
 import config
