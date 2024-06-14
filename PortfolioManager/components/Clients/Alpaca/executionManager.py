@@ -390,7 +390,7 @@ class ExecutionManager(threading.Thread):
         order_id = order.order_id
         order_data = order.to_dict()
         
-        self.redis_client.rpush('order_queue', order_id)
+        self.redis_client.rpush('order:queue', order_id)
         self.redis_client.hset(f'order:{order_id}', mapping = order_data)
 
     def update_holdings(self,client):
@@ -403,8 +403,8 @@ class ExecutionManager(threading.Thread):
             return
         
         posdf_json = self.positions.to_json(orient='records')
-        self.redis_client.set('current_positions_LIVE' if client is api.client['LIVE'] else 'current_positions_DEV', posdf_json)
-        self.redis_client.hset('portfolio_positions','LIVE' if client is api.client['LIVE'] else 'DEV', posdf_json)
+        self.redis_client.set('current:positions:LIVE' if client is api.client['LIVE'] else 'current:positions:DEV', posdf_json)
+        self.redis_client.hset('portfolio:positions','LIVE' if client is api.client['LIVE'] else 'DEV', posdf_json)
         return self.positions
 
     def process_orders(self):
@@ -412,7 +412,7 @@ class ExecutionManager(threading.Thread):
             try:
                 time.sleep(1)
                 # Pop an order ID from the front of the list
-                order_id = self.redis_client.lpop('order_queue')
+                order_id = self.redis_client.lpop('order:queue')
                 if order_id:
                     # Retrieve the order details from the hash
                     order_data = self.redis_client.hgetall(f'order:{order_id}')

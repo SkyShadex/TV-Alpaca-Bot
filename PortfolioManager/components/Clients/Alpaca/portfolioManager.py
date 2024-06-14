@@ -23,8 +23,8 @@ if not redis_client.exists("pnl"):
 
 def initialize_globals():
     # Set initial highest_equity in Redis
-    redis_client.set('highest_equity_date', str(dt.date.today()))
-    redis_client.set('highest_equity', float(api.get_account().last_equity)) #type: ignore
+    redis_client.set('highest:equity:date', str(dt.date.today()))
+    redis_client.set('highest:equity', float(api.get_account().last_equity)) #type: ignore
 
 initialize_globals()
 
@@ -93,9 +93,9 @@ def manageOptions(client, pos):
 
         if portfolio_delta:
             portfolio_delta_sum = float(sum(portfolio_delta))
-            redis_client.set('portfolio_delta_live' if client is api.client['LIVE'] else 'portfolio_delta', portfolio_delta_sum)
+            redis_client.set('portfolio:delta:live' if client is api.client['LIVE'] else 'portfolio:delta', portfolio_delta_sum)
             key = 'LIVE' if client is api.client['LIVE'] else 'DEV'
-            redis_client.hset('portfolio_deltas',str(key), str(portfolio_delta_sum))
+            redis_client.hset('portfolio:deltas',str(key), str(portfolio_delta_sum))
 
         if limit_orders or stoploss_orders:
             print("Positions found to close")
@@ -158,17 +158,16 @@ def checkPrices(row):
         time_exit = days_to_expiry < 4
         badDelta = np.abs(delta) < 0.2
         # stoploss = max(liquid_plpc_mid,liquid_plpc_worst) < api.adjustmentTimed(startValue=-0.7,finalValue=-0.9,startDate=dt.datetime(2024, 5, 23),period=30)
-        pnl = max(liquid_plpc_mid,liquid_plpc_worst) > 1.5#api.adjustmentTimed(startValue=2.0,finalValue=3.0,startDate=dt.datetime(2024, 5, 23),period=30) # and quote.mid_price >= modeled_price ///// previously needed to check midprice to place safer market orders. switched to limit orders. also changed to vw_midprice
+        pnl = max(liquid_plpc_mid,liquid_plpc_worst) > 0.7#api.adjustmentTimed(startValue=2.0,finalValue=3.0,startDate=dt.datetime(2024, 5, 23),period=30) # and quote.mid_price >= modeled_price ///// previously needed to check midprice to place safer market orders. switched to limit orders. also changed to vw_midprice
         marketOrder = time_exit
         reason = "delta" if badDelta else "time" if time_exit else "stoploss"
         sell = marketOrder or pnl
         simple_midprice = ((quote.ask_price+quote.bid_price)/2)
         conditions = [sell,[time_exit,days_to_expiry],[badDelta,round(delta,2)],pnl,marketOrder,[simple_midprice<quote.mid_price,round(simple_midprice,2),round(quote.mid_price,2)]]
         if sell:
-            print(f'[{row.symbol}]: {row.cost_per_unit:.4f} P/L: {liquid_plpc_mid:.2%} of Spread: {liquid_spread_mid:.2%}')
-            logging.info(f'[{row.symbol}] {conditions}')
-            logging.info(f'[{row.symbol}] {row.cost_per_unit} P/L: [{liquid_plpc_mid:.2%},{liquid_plpc_worst:.2%}]  % of Spread: [{liquid_spread_mid:.2%},{liquid_spread_worst:.2%}]')
-            logging.info(f'[{row.symbol}] Strike: {strike_price} Model Price: {modeled_price:.2f} Mid Price: {quote.mid_price:.2f} Mid2: {simple_midprice:.2f} Delta: {delta:.2f}')    
+            logging.info(f' [{row.symbol}] {conditions}')
+            logging.info(f' [{row.symbol}] {row.cost_per_unit} P/L: [{liquid_plpc_mid:.2%},{liquid_plpc_worst:.2%}]  % of Spread: [{liquid_spread_mid:.2%},{liquid_spread_worst:.2%}]')
+            logging.info(f' [{row.symbol}] Strike: {strike_price} Model Price: {modeled_price:.2f} Mid Price: {quote.mid_price:.2f} Mid2: {simple_midprice:.2f} Delta: {delta:.2f}')    
             
         return [sell,tp,marketOrder,delta,quote.mid_v,reason]
 
@@ -268,8 +267,8 @@ class PortfolioManager():
         self.update_instruments(self.client)
 
     def update_values(self,client = api.client['DEV']):
-        key = 'portfolio_delta_live' if client is api.client['LIVE'] else 'portfolio_delta_dev'
-        self.portfolio_delta = float(redis_client.hget('portfolio_deltas',str('LIVE' if client is api.client['LIVE'] else 'DEV')) or 0.0) #type: ignore
+        key = 'portfolio:delta:live' if client is api.client['LIVE'] else 'portfolio:delta:dev'
+        self.portfolio_delta = float(redis_client.hget('portfolio:deltas',str('LIVE' if client is api.client['LIVE'] else 'DEV')) or 0.0) #type: ignore
 
         acct_info = client.get_account()
         if not acct_info:
@@ -306,10 +305,31 @@ class PortfolioManager():
             return False
         
         posdf_json = self.positions.to_json(orient='records')
-        redis_client.set('current_positions_LIVE' if client is api.client['LIVE'] else 'current_positions_DEV', posdf_json)
-        redis_client.hset('portfolio_positions','LIVE' if client is api.client['LIVE'] else 'DEV', posdf_json)
+        redis_client.set('current:positions:LIVE' if client is api.client['LIVE'] else 'current:positions:DEV', posdf_json)
+        redis_client.hset('portfolio:positions','LIVE' if client is api.client['LIVE'] else 'DEV', posdf_json)
         return True
     
+    def stale_orders(self,client = api.client['DEV']):
+        if not api.trading_hours(10,16):
+            print('stale_order: outside of active hours')
+            return
+        open_orders = client.get_orders(filter=GetOrdersRequest(status='open',limit=500,after=dt.datetime.now() - dt.timedelta(hours=36))) # type: ignore
+        self.orders = pd.DataFrame()   
+        if open_orders:
+            self.orders = parse_orders(open_orders)
+
+        def prune(row):
+            logging.info(f" stale order found: {row.symbol} {row.order_age} {row.order_type}")
+            client.cancel_order_by_id(order_id=row.id)
+
+        if not self.orders.empty:
+            self.orders['submitted_at'] = pd.to_datetime(self.orders['submitted_at'], utc=True)
+            now = dt.datetime.now(dt.timezone.utc)
+            self.orders['order_age'] = (now - self.orders['submitted_at']).dt.total_seconds() / 3600
+            self.orders = self.orders[self.orders['order_age'] >= 2]
+            if not self.orders.empty:
+                self.orders.apply(prune,axis=1)
+
     def update_instruments(self,client = api.client['DEV']):
         if not self.update_holdings(client=client):
             return False
@@ -332,6 +352,7 @@ class PortfolioManager():
                 correctionFactor = self.options_allocation/op_ratio
                 smoothingFactor = 0.5
                 self.options_CF = correctionFactor*smoothingFactor
+
             self.op_ratio = op_ratio
             self.options_VaR = cost_OP.sum()
             self.equity_VaR = cost_EQ.sum()
@@ -343,8 +364,9 @@ class PortfolioManager():
 
     def parseSignals(self):
         client = self.client
+        self.stale_orders(client)
         strat = "tsmom"
-        signals = redis_client.hgetall('strategy-signals_tsmom')
+        signals = redis_client.hgetall('strategy:signals:tsmom')
         if signals is None:
             return
         
@@ -355,19 +377,16 @@ class PortfolioManager():
             self.update_holdings(client)
             time.sleep(5)
 
-            weights = redis_client.hgetall('portfolio_weights')
-            weights_df = pd.Series(weights)
-            # logging.info(weights_df.head())
+            weights = redis_client.hgetall('portfolio:weights')
+            weights_series = pd.Series(weights).astype(float)
 
             signals_dict = {symbol: json.loads(signal) for symbol, signal in signals.items()}
             signals_df = pd.DataFrame(signals_dict).T
-            signals_df.signal = signals_df.signal.astype(int)
-            # active_signals = signals_df.loc[signals_df.signal != 0].copy()
-            # inactive_signals = signals_df.loc[signals_df.signal == 0].copy()
+            signals_df['signal'] = signals_df['signal'].astype(int)
 
-            # logging.info(f'{len(active_signals)} {len(inactive_signals)}')
-            # logging.info(active_signals.head())
-
+            # add weights to signals_df, replace missing weights with self.base_risk
+            signals_df['weight'] = signals_df.index.map(weights_series)
+            signals_df['weight'] = signals_df['weight'].fillna(self.base_risk)
 
             equities = self.positions.loc[~self.positions['asset_class'].str.contains("us_option",case=False)].copy()
             open_orders = client.get_orders(filter=GetOrdersRequest(status='open',limit=500,after=dt.datetime.now() - dt.timedelta(hours=36)))
@@ -403,13 +422,15 @@ class PortfolioManager():
                 quote = get_latest_quote(symbol)
                 time.sleep(1.5)
                 price = quote['mid_price'].iloc[0]
-                weight = float(weights_df[symbol])
+                weight = row.weight
 
                 if side == 'sell':
                     weight *= self.ls_ratio * self.stock_allocation
                 else:
                     weight *= self.stock_allocation
-                quantity = max((self.buyingpower * config.RISK_EXPOSURE * weight),1.1) / price
+
+                quantity = max((self.buyingpower * self.base_risk * weight),1.1) / price # positions can't be less than 1$USD
+
                 if side == 'sell':
                     quantity = max(int(quantity),1) # short positions can't be fractional
 
@@ -425,7 +446,6 @@ class PortfolioManager():
         finally:
             elapsed_time = (dt.datetime.now() - starttime).total_seconds() // 60
             print(f'Portfolio Signals Sweep Complete ({elapsed_time} mins)...')
-
 
 
     def rebalance(self,client=api.client['DEV']):
@@ -479,5 +499,4 @@ class PortfolioManager():
                     except Exception as e:
                         logging.exception(f"{self.rebalance.__name__}")
         self.update_values()
-        print(round(self.exposure_Ratio,3)) #type: ignore
 
