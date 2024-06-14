@@ -6,6 +6,7 @@ import datetime as dt
 from pytz import timezone
 import re
 import pandas as pd
+import redis
 
 class CustomTradingClient(TradingClient):
 
@@ -26,7 +27,7 @@ class CustomTradingClient(TradingClient):
                 'LIVE': self.prod
                 }
             self.initialized = True
-
+            self.redis_client = redis.Redis(host=config.DB_HOST, port=config.DB_PORT, decode_responses=True)
             # self.clientDF = pd.DataFrame()
             # self.clientDF['DEV'] = self
             
@@ -41,20 +42,43 @@ class CustomTradingClient(TradingClient):
             print(f"Error occurred while checking Alpaca API status: {e}")
             return False
 
+    def rate_limiter(self, key, limit, window):
+        current_time = int(time.time())
+        pipeline = self.redis_client.pipeline()
+        pipeline.zadd(key, {current_time: current_time})
+        pipeline.zremrangebyscore(key, 0, current_time - window)
+        pipeline.zcard(key)
+        pipeline.expire(key, window + 1)
+        _, _, count, _ = pipeline.execute()
+
+        if count > limit:
+            return False
+        return True
+
     def call_with_rate_limit(self, func, *args, **kwargs):
+        key = "api_call_limit"
+        limit = 200  # Set the desired limit (e.g., 200 calls)
+        window = 60  # Time window in seconds (e.g., 60 seconds)
+
         while True:
-            try:
-                # with self.rate_limit_lock:
-                result = func(*args, **kwargs)
-                return result
-            except Exception as e:
-                # Retry after waiting for a while
-                print(f"Rate limit exceeded. Retrying in 5 seconds...")
+            if self.rate_limiter(key, limit, window):
+                try:
+                    result = func(*args, **kwargs)
+                    return result
+                except Exception as e:
+                    print(f"Error occurred: {e}")
+                    time.sleep(5)
+            else:
+                print("Rate limit exceeded. Retrying in 5 seconds...")
                 time.sleep(5)
 
     def trading_hours(self,resume_time=3,pause_time=16):
         current_time = dt.datetime.now(timezone('US/Eastern'))
-        if (dt.time(pause_time, 0) <= current_time.time() or current_time.time() <= dt.time(resume_time, 0)) or current_time.weekday() >= 5:
+        if dt.time(pause_time, 0) <= current_time.time():
+            return False
+        if current_time.time() <= dt.time(resume_time, 0):
+            return False
+        if current_time.weekday() >= 5:
             return False
         return True
     
