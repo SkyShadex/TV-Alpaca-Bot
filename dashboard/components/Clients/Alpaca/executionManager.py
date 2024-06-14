@@ -382,7 +382,7 @@ class ExecutionManager(threading.Thread):
         order_data = order.to_dict()
         
         # Push the order ID to the list
-        self.redis_client.rpush('order_queue', order_id)
+        self.redis_client.rpush('order:queue', order_id)
         
         # Store the order details in a hash
         self.redis_client.hset(f'order:{order_id}', mapping = order_data)
@@ -390,7 +390,7 @@ class ExecutionManager(threading.Thread):
     def process_orders(self):
         while True:
             # Pop an order ID from the front of the list
-            order_id = self.redis_client.lpop('order_queue')
+            order_id = self.redis_client.lpop('order:queue')
             if order_id:
                 # Retrieve the order details from the hash
                 order_data = self.redis_client.hgetall(f'order:{order_id}')
@@ -409,7 +409,7 @@ class ExecutionManager(threading.Thread):
             return
         
         posdf_json = self.positions.to_json(orient='records')
-        self.redis_client.set('current_positions_LIVE' if client is api.client['LIVE'] else 'current_positions_DEV', posdf_json)
+        self.redis_client.set('current:positions:LIVE' if client is api.client['LIVE'] else 'current:positions:DEV', posdf_json)
 
     def execute_order(self, order_data):
         toDelete = True
@@ -458,7 +458,7 @@ class ExecutionManager(threading.Thread):
 
             # Determine if this is a child order and if it's ready to execute
             if current_time < order_data['next_time']:
-                self.redis_client.rpush('order_queue_child', order_data['order_id'])
+                self.redis_client.rpush('order:queue:child', order_data['order_id'])
                 return
 
             if order_data['symbol'] in self.positions.symbol.any():
@@ -469,7 +469,7 @@ class ExecutionManager(threading.Thread):
                 res = order_data['client'].close_position(order_data['symbol'],close_options=ClosePositionRequest(percentage=str(percentage_per_interval)))
                 order_data['next_time'] = current_time + datetime.timedelta(minutes=interval)
                 self.redis_client.hset(f'order:{order_data["order_id"]}', mapping = order_data)
-                self.redis_client.rpush('order_queue', order_data['order_id'])
+                self.redis_client.rpush('order:queue', order_data['order_id'])
             else:
                 order_data['client'].close_position(order_data['symbol'])
                 self.redis_client.delete(f'order:{order_data["order_id"]}')
@@ -500,7 +500,7 @@ class ExecutionManager(threading.Thread):
 
             # Determine if this is a child order and if it's ready to execute
             if datetime.datetime.timestamp(current_time) < datetime.datetime.timestamp(order_data['next_time']):
-                self.redis_client.rpush('order_queue_child', order_data['order_id'])
+                self.redis_client.rpush('order:queue:child', order_data['order_id'])
                 return
 
             if order_data['symbol'] in self.positions.symbol.any():
@@ -511,7 +511,7 @@ class ExecutionManager(threading.Thread):
                 quantity = int(math.ceil(quantity*percentage_per_interval)) if 'short' in str(pos['side']).lower() else round(quantity*percentage_per_interval, 9)
                 order_data['next_time'] = current_time + datetime.timedelta(minutes=interval)
                 self.redis_client.hset(f'order:{order_data["order_id"]}', mapping = order_data)
-                self.redis_client.rpush('order_queue', order_data['order_id'])
+                self.redis_client.rpush('order:queue', order_data['order_id'])
             else:
                 self.redis_client.delete(f'order:{order_data["order_id"]}')
 
