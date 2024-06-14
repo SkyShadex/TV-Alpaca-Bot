@@ -7,7 +7,7 @@ body {
 }
 
 .container {
-    max-width: 800px;
+    max-width: 80%;
     margin: 0 auto;
     background-color: #222;
     border-radius: 10px;
@@ -81,6 +81,10 @@ table {
     border-collapse: collapse;
     table-layout: fixed;
     margin-top: 20px;
+}
+
+.account-table th {
+    width: 40%; 
 }
 
 th, td {

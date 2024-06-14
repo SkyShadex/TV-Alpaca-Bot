@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    </head>
+    <body>
+        <div class="container">
+            <img src="{{ url_for('static', filename='alpaca_icon@1x.png') }}" alt="Alpaca Icon" />
+            <h2>Alpaca Dashboard</h2>
+            <p>This is local</p>
+            
+            <div class="tab">
+                {% for metric_name, metric_data in metric_modules.items() %}
+                    <button class="tab-button{% if loop.first %} active{% endif %}" onclick="openTab('{{ metric_name }}', event)">{{ metric_name }}</button>
+                {% endfor %}
+            </div>
+
+            {% for metric_name, metric_data in metric_modules.items() %}
+                <div id="{{ metric_name }}" class="tab-content{% if loop.first %} active{% endif %}">
+                    <h2>{{ metric_name }}</h2>
+                    <ul>
+                        {% for symbol, data in metric_data.items() %}
+                            <li>{{ symbol }}: {{ data }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endfor %}
+        </div>
+        <script>
+            function openTab(tabName, event) {
+                var i, tabContent, tabButton;
+        
+                // Hide all tab content
+                tabContent = document.getElementsByClassName("tab-content");
+                for (i = 0; i < tabContent.length; i++) {
+                    tabContent[i].style.display = "none";
+                }
+        
+                // Remove "active" class from all buttons
+                tabButton = document.getElementsByClassName("tab-button");
+                for (i = 0; i < tabButton.length; i++) {
+                    tabButton[i].className = tabButton[i].className.replace(" active", "");
+                }
+        
+                // Show the current tab content
+                document.getElementById(tabName).style.display = "block";
+        
+                // Add "active" class to the button that opened the tab
+                event.currentTarget.className += " active";
+            }
+        
+            // Default to showing the first tab content
+            var firstTabName = "{{ list(metric_module.keys())[0] }}";
+            document.getElementById(firstTabName).style.display = "block";
+        </script>        
+    </body>
+</html>

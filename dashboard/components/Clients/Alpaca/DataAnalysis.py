@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 from alpaca.trading.requests import GetOrdersRequest
 from alpaca.broker.requests import GetAccountActivitiesRequest
 import time
-from commons import vars
-from components.Clients.Alpaca.api_alpaca import api
+from common import vars
+from common.api_alpaca import api
 from alpaca.broker.client import BrokerClient
 import pandas as pd
 import numpy as np

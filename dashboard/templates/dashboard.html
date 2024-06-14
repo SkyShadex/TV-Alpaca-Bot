@@ -29,8 +29,8 @@
                     <tr>
                         <td>{{ order.created_at }}</td>
                         <td>{{ order.symbol }}</td>
-                        <td>{{ order.type }}</td>
-                        <td>{{ order.side }}</td>
+                        <td>{{ order.type.split('.')[-1] }}</td>
+                        <td>{{ order.side.split('.')[-1] }}</td>
                         <td>{{ order.qty }}</td>
                         <td>{{ order.limit_price }}</td>
                         <td>{{ order.filled_avg_price }}</td>
@@ -41,7 +41,7 @@
 
             <div id="account" class="tab-content">
                 {% if account_info %}
-                    <table>
+                    <table class="account-table">
                     {% for item in account_info %}
                         <tr>
                             <th>{{ item[0] }}</th>

@@ -1,4 +1,4 @@
-from components.Clients.Alpaca.api_alpaca import api
+from common.api_alpaca import api
 from alpaca.trading.enums import AssetClass
 from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest,CryptoBarsRequest,CryptoLatestQuoteRequest,OptionLatestQuoteRequest
 from alpaca.data.historical.stock import StockHistoricalDataClient

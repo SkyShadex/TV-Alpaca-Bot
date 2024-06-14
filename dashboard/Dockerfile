@@ -13,11 +13,17 @@ RUN pip install -r requirements.txt
 # RUN pip install --upgrade -r requirements.txt
 
 COPY dashboard/ .
-
-EXPOSE 5000
+COPY common/ ./common
 
 CMD ["python", "__init__.py"]
 
+
+########################### DEPRECATED ###########################
+
 # CMD ["gunicorn", "-c", "gunicorn_config.py", "main:app"]
+
+########################### NOTES ###########################
+
+# how I used to run gunicorn manually before I went to microservices
 
 # gunicorn -c gunicorn_config.py main:app

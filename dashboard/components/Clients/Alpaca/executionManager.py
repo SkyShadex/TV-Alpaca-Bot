@@ -7,8 +7,8 @@ from alpaca.trading.requests import (ClosePositionRequest, GetOrdersRequest,
                                      LimitOrderRequest, MarketOrderRequest)
 
 import config
-from commons import vars
-from components.Clients.Alpaca.api_alpaca import api
+from common import vars
+from common.api_alpaca import api
 from components.Clients.Alpaca.portfolio import parse_positions
 import logging
 import redis
@@ -409,10 +409,7 @@ class ExecutionManager(threading.Thread):
             return
         
         posdf_json = self.positions.to_json(orient='records')
-        if client is api.client['LIVE']:
-            self.redis_client.set('current_positions_LIVE', posdf_json)
-        else:
-            self.redis_client.set('current_positions_DEV', posdf_json)
+        self.redis_client.set('current_positions_LIVE' if client is api.client['LIVE'] else 'current_positions_DEV', posdf_json)
 
     def execute_order(self, order_data):
         toDelete = True

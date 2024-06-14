@@ -1,10 +1,10 @@
 from alpaca.trading.requests import GetOrdersRequest, MarketOrderRequest
 from alpaca.trading.models import TradeAccount
-from components.Clients.Alpaca.api_alpaca import api
+from common.api_alpaca import api
 from components.Clients.Alpaca.portfolio import parse_positions
 from components.Clients.Alpaca.executionManager import exitOrder,optionsOrder,execution_manager,SkyOrder
-from components.Clients.Alpaca.Strategy.OptionsOI import Strategy_PricingModel
-from components.Clients.Alpaca.price_data import get_latest_quote
+# from components.Clients.Alpaca.Strategy.OptionsOI import Strategy_PricingModel
+from common.price_data import get_latest_quote
 from pytz import timezone
 import datetime as dt
 import numpy as np
@@ -28,7 +28,6 @@ def initialize_globals():
     # Set initial highest_equity in Redis
     redis_client.set('highest_equity_date', str(dt.date.today()))
     redis_client.set('highest_equity', float(api.get_account().last_equity)) #type: ignore
-    redis_client.set('portfolio_delta', 0)
 
 # Initialize global variables for the first request in each thread
 initialize_globals()
@@ -188,9 +187,9 @@ def checkPrices(row):
         # print(f'[{row.symbol}] {row.cost_basis} {row.avg_entry_price}')
         # print(f'[{row.symbol}] {row.unrealized_plpc:.2%}')
 
-        # hotfix for alpaca options contract rounding error
-        if row.unrealized_plpc >= 10: #row.cost_per_unit < 0.01 and row.cost_per_unit != 0.0:
-            row.cost_per_unit = round(100*row.cost_per_unit,2)
+        # # hotfix for alpaca options contract rounding error
+        # if row.unrealized_plpc >= 10: #row.cost_per_unit < 0.01 and row.cost_per_unit != 0.0:
+        #     row.cost_per_unit = round(100*row.cost_per_unit,2)
 
         liquid_spread_worst = np.log(quote.bid_price/modeled_price)
         liquid_plpc_worst = np.log(quote.bid_price/row.cost_per_unit)
@@ -351,8 +350,7 @@ class PortfolioManager():
             return False
         
         posdf_json = self.positions.to_json(orient='records')
-        key = 'current_positions_LIVE' if client is api.client['LIVE'] else 'current_positions_DEV'
-        redis_client.set(key, posdf_json)
+        redis_client.set('current_positions_LIVE' if client is api.client['LIVE'] else 'current_positions_DEV', posdf_json)
         return True
     
     def update_instruments(self,client = api.client['DEV']):
@@ -365,10 +363,10 @@ class PortfolioManager():
             options = self.positions.loc[self.positions['asset_class'].str.contains("us_option",case=False)].copy()
             cost_OP = options.cost_basis.abs().to_numpy()
 
-            # hotfix for alpaca options rounding error
-            hotfix = options.unrealized_plpc.to_numpy()
-            if hotfix.any() > 10:
-                cost_OP *= 100
+            # # hotfix for alpaca options rounding error
+            # hotfix = options.unrealized_plpc.to_numpy()
+            # if hotfix.any() > 10:
+            #     cost_OP *= 100
 
             op_ratio = cost_OP.sum()/cost_EQ.sum()
             if op_ratio == 0:

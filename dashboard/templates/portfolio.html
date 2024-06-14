@@ -5,6 +5,69 @@
     </head>
     <body>
         <div class="container">
+            <img src="{{ url_for('static', filename='alpaca_icon@1x.png') }}" alt="Alpaca Icon" />
+            <h2>Alpaca Dashboard</h2>
+            <p>This is local</p>
+            
+            <div class="tab">
+                <button class="tab-button active" onclick="openTab('portfolio', event)">Portfolio</button>
+                <button class="tab-button" onclick="openTab('asset', event)">Asset Performance</button>
+            </div>
+
+            <div id="portfolio" class="tab-content active">
+                <h2>Portfolio</h2>
+                {% if portfolio_plot %}
+                    <img id="graph" src="{{ portfolio_plot }}" alt="Equity Plot">
+                {% else %}
+                    <p>No portfolio plot available.</p>
+                {% endif %}
+            </div>
+
+            <div id="asset" class="tab-content">
+                <h2>Asset Performance</h2>
+                {% if asset_plot %}
+                    <img id="graph" src="{{ asset_plot }}" alt="Asset Plot">
+                {% else %}
+                    <p>No asset plot available.</p>
+                {% endif %}
+            </div>
+        </div>
+        <script>
+            function openTab(tabName, event) {
+                var i, tabContent, tabButton;
+
+                // Hide all tab content
+                tabContent = document.getElementsByClassName("tab-content");
+                for (i = 0; i < tabContent.length; i++) {
+                    tabContent[i].style.display = "none";
+                }
+
+                // Remove "active" class from all buttons
+                tabButton = document.getElementsByClassName("tab-button");
+                for (i = 0; i < tabButton.length; i++) {
+                    tabButton[i].className = tabButton[i].className.replace(" active", "");
+                }
+
+                // Show the current tab content
+                document.getElementById(tabName).style.display = "block";
+
+                // Add "active" class to the button that opened the tab
+                event.currentTarget.className += " active";
+            }
+
+            // Default to showing the first tab content
+            document.getElementById('portfolio').style.display = "block";
+        </script>
+    </body>
+</html>
+
+<!-- <!DOCTYPE html>
+<html>
+    <head>
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css') }}">
+    </head>
+    <body>
+        <div class="container">
             <img src="static/alpaca_icon@1x.png" alt="Alpaca Icon" />
             <h2>Alpaca Dashboard</h2>
             <p>This is local</p>
@@ -46,4 +109,4 @@
             }
         </script>
     </body>
-</html>
+</html> -->
