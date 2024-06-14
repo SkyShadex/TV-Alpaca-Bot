@@ -21,7 +21,7 @@ services:
         condition: service_healthy
     restart: on-failure:3
 
-  strategy-manager:
+  strategy-manager: &rep1
     build:
       context: .
       dockerfile: ./StrategyManager/Dockerfile
@@ -32,7 +32,28 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    restart: on-failure:3
+    deploy:
+      update_config:
+        parallelism: 2
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
+    environment:
+      - CONTAINER_ID=1
+
+  strategy-manager-b:
+    <<: *rep1
+    environment:
+      - CONTAINER_ID=2
+
+  strategy-manager-c:
+    <<: *rep1
+    environment:
+      - CONTAINER_ID=3
 
   portfolio-manager:
     build:
