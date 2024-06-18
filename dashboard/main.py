@@ -45,7 +45,27 @@ def proxy_portfolio(path):
     #     response = requests.post(url, json=request.get_json())
     # else:
     response = requests.get(url, params=request.args)
-    return jsonify(response.json())
+    # return jsonify(response.json())
+
+    graph_directory = 'static/data/graphs/options'
+
+    list_of_files = glob.glob(os.path.join(graph_directory, '*.png'))
+
+    # Check if there are any .png files
+    if list_of_files:
+        # Find the latest file by modification time
+        latest_file = max(list_of_files, key=os.path.getmtime)
+        latest_filename = os.path.basename(latest_file)
+        latest_full_path = os.path.join(graph_directory, latest_filename)
+        random_file = random.choice(list_of_files)   
+        random_file_filename = os.path.basename(random_file)
+        random_full_path = os.path.join(graph_directory, random_file_filename) 
+    else:
+        random_full_path = 'static/data/graphs'
+        latest_full_path = 'static/data/graphs'
+        print("No File Found")
+
+    return render_template('portfolio.html', portfolio_plot=latest_full_path, asset_plot=random_full_path)
 
 @app.route('/')
 def dashboard():
