@@ -42,6 +42,10 @@ services:
         delay: 10s
         max_attempts: 3
         window: 60s
+      resources:
+        limits:
+          cpus: "4"
+          memory: "5g"
     environment:
       - CONTAINER_ID=1
 
@@ -96,7 +100,7 @@ services:
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
-      interval: 1s
+      interval: 5s
       timeout: 3s
       retries: 5
   

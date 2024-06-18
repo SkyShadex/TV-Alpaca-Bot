@@ -2,6 +2,7 @@
     "recommendations": [
         "gruntfuggly.todo-tree",
         "ms-python.isort",
-        "formulahendry.docker-extension-pack"
+        "formulahendry.docker-extension-pack",
+        "ms-python.black-formatter"
     ]
 }
