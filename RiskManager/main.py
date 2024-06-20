@@ -8,6 +8,7 @@ import sys
 from common import config
 from common.api_alpaca import api
 from components.Clients.Alpaca.Strategy.RiskManager import RiskManager
+from components.Clients.Alpaca.Strategy.DataAnalysis2 import calcPerformance
 from flask_apscheduler import APScheduler
 
 
@@ -24,17 +25,14 @@ def run_strat():
 def run_strat2():
     universe = RiskManager('metadata')
 
-def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
+def manageSchedules(TradingHours):
     if TradingHours:
         master_scheduler.add_job(id='bod', func=scheduler.resume, trigger='cron', day_of_week='mon-fri', hour=8, minute=0, misfire_grace_time = None)
         master_scheduler.add_job(id='eod', func=scheduler.pause, trigger='cron', day_of_week='mon-fri', hour=20, minute=5,misfire_grace_time = None)
+        master_scheduler.add_job(id='da', func=calcPerformance)
 
-    if equities:
-        if onInit:
-            # scheduler.add_job(id='risk_manager_init', func=run_strat2)
-            ...
-        scheduler.add_job(id='risk_manager_loop', func=run_strat, trigger='cron', day_of_week='mon-fri', hour='*/2', start_date='2024-03-25 08:00:00', max_instances=1)
-        scheduler.add_job(id='risk_manager_loop2', func=run_strat2, trigger='cron', day_of_week='mon-fri', day='*/1', start_date='2024-03-25 08:00:00', max_instances=1)
+    scheduler.add_job(id='risk_manager_loop', func=run_strat, trigger='cron', day_of_week='mon-fri', hour='*/2', start_date='2024-03-25 08:00:00', max_instances=1)
+    scheduler.add_job(id='risk_manager_loop2', func=run_strat2, trigger='cron', day_of_week='mon-fri', day='*/1', start_date='2024-03-25 08:00:00', max_instances=1)
 
     master_scheduler.init_app(app)
     master_scheduler.start()
@@ -45,7 +43,7 @@ def manageSchedules(TradingHours,OrderReset,equities,options,portfolio,onInit):
         print(f"Pause Operations... {scheduler.state}")
         scheduler.pause()    
 
-manageSchedules(TradingHours=True,OrderReset=False,equities=True,options=[True,True],portfolio=[True,True],onInit=True)  
+manageSchedules(TradingHours=True)  
 
 # # Making the dashboard dynamic
 # def fetch_orders():
