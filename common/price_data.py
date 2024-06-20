@@ -21,7 +21,6 @@ import time
 import redis
 import logging
 import json
-from io import StringIO
 
 apHist = StockHistoricalDataClient(config.API_KEY, config.API_SECRET)
 apCrypto = CryptoHistoricalDataClient(config.API_KEY, config.API_SECRET)
@@ -100,7 +99,7 @@ def get_ohlc_alpaca(
     current_date = pd.Timestamp.now(tz=UTC_TIMEZONE)
     oldFound = False
     loopSymbols = False
-    sleep_duration = 0
+    sleep_duration = 200 / 60 #TODO: build rate limiter for alpaca api
     tf = str(timeframe)
 
     if isinstance(symbols, (pd.Series, list)):
@@ -145,11 +144,11 @@ def get_ohlc_alpaca(
 
     start_date = current_date - dt.timedelta(days=lookback)
     for i, symbol in enumerate(symbols):
+        time.sleep(sleep_duration) #TODO: build rate limiter for alpaca api
         if symCount > 1 and loopSymbols:
             percent_complete = (i + 1) / symCount * 100
             print(f"Progress: {percent_complete:.2f}% complete {symbol}", flush=True)
-            time.sleep(sleep_duration)
-
+            
         asset = api.get_asset(symbol)
         isCrypto = asset.asset_class == AssetClass.CRYPTO
         if isCrypto:
