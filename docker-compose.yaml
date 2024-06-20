@@ -16,10 +16,25 @@ services:
       - .:/workspace:cached
       - graphs:/app/data/graphs
       - graphs:/app/static/data/graphs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
     depends_on:
       redis:
         condition: service_healthy
-    restart: on-failure:3
+    deploy:
+      update_config:
+        parallelism: 2
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
 
   strategy-manager: &rep1
     build:
@@ -31,6 +46,8 @@ services:
       - graphs:/app/data/graphs
     depends_on:
       redis:
+        condition: service_healthy
+      dashboard:
         condition: service_healthy
     deploy:
       update_config:
@@ -49,15 +66,20 @@ services:
     environment:
       - CONTAINER_ID=1
 
-  strategy-manager-b:
+  b-strategy-manager:
     <<: *rep1
     environment:
       - CONTAINER_ID=2
 
-  strategy-manager-c:
+  c-strategy-manager:
     <<: *rep1
     environment:
       - CONTAINER_ID=3
+
+  d-strategy-manager:
+    <<: *rep1
+    environment:
+      - CONTAINER_ID=4
 
   portfolio-manager:
     build:
@@ -72,7 +94,18 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    restart: on-failure:3
+      dashboard:
+        condition: service_healthy
+    deploy:
+      update_config:
+        parallelism: 2
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
 
   risk-manager:
     build:
@@ -85,7 +118,18 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    restart: on-failure:3
+      dashboard:
+        condition: service_healthy
+    deploy:
+      update_config:
+        parallelism: 2
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 60s
 
   redis:
     image: redis/redis-stack:latest
@@ -97,7 +141,7 @@ services:
     hostname: "${DB_HOST}"
     volumes:
       - redis-data:/data
-    restart: always
+    restart: on-failure:10
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
       interval: 5s
