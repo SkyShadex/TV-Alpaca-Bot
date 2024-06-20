@@ -81,6 +81,8 @@ def manageSchedules(TradingHours, OrderReset, portfolio, onInit):
             day_of_week="mon-fri",
             minute="*/10",
             start_date="2024-03-25 13:15:00",
+            max_instances=2,
+            misfire_grace_time=None,
         )
         scheduler.add_job(
             id="parse_signals_live",
@@ -89,6 +91,8 @@ def manageSchedules(TradingHours, OrderReset, portfolio, onInit):
             day_of_week="mon-fri",
             minute="*/10",
             start_date="2024-03-25 13:20:00",
+            max_instances=2,
+            misfire_grace_time=None,
         )
         scheduler.add_job(
             id="managePNL_loop",
@@ -97,6 +101,8 @@ def manageSchedules(TradingHours, OrderReset, portfolio, onInit):
             day_of_week="mon-fri",
             minute="*/7",
             start_date="2024-03-25 13:15:00",
+            max_instances=2,
+            misfire_grace_time=None,
         )
         scheduler.add_job(
             id="options_metrics",
