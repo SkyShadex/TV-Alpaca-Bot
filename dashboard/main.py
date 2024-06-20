@@ -1,7 +1,5 @@
 import json
 import logging
-# import queue
-# import threading
 import redis
 from threading import Lock, Thread
 import datetime as dt
@@ -18,7 +16,6 @@ from common import discord
 from common import start, vars, price_data
 from common.api_alpaca import api
 import pandas as pd
-# from components.Clients.Alpaca.api_alpaca import api
 # import components.Clients.MetaTrader.mt5_server as mt5
 from components.techanalysis import screener
 import os
@@ -35,8 +32,23 @@ cache = Cache(app, config={'CACHE_TYPE': 'simple'})
 # tracemalloc.start()
 # s = None
 # Declaring some variables
-accountInfo = api.get_account()
+
+try:
+    accountInfo = api.get_account()
+except Exception as e:
+    logging.exception("Alpaca Service Unavailable")
+    accountInfo = None
+
 order_lock = Lock()
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    try:
+        api.get_account()
+        return jsonify(status="healthy"), 200
+    except Exception as e:
+        logging.exception("Alpaca Service Unavailable")
+        return jsonify(status="unhealthy", reason=str(e)), 503
 
 @app.route('/portfolio/<path:path>', methods=['GET'])
 def proxy_portfolio(path):
